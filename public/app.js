@@ -6,14 +6,15 @@
 
 const STORAGE_KEY = 'spiceShopAccountingData_v1';
 
-let state = { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [] };
+let state = { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [], categories: [] };
 let currentSupplierId = null;
+let editingProductId = null;
 let sellMode = 'qty';
 let purchaseItemsDraft = [];
 
 /* ---------------- Persistence (localStorage) ---------------- */
 
-function defaultState() { return { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [] }; }
+function defaultState() { return { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [], categories: [] }; }
 
 function loadState() {
   try {
@@ -26,6 +27,7 @@ function loadState() {
   state.products = state.products || [];
   state.suppliers = state.suppliers || [];
   state.sales = state.sales || [];
+  state.categories = state.categories || [];
 }
 
 // يكتب البيانات فوراً على القرص (localStorage) بدون إعادة رسم الواجهة،
@@ -75,6 +77,7 @@ function importBackup(file) {
       state.products = state.products || [];
       state.suppliers = state.suppliers || [];
       state.sales = state.sales || [];
+      state.categories = state.categories || [];
       save();
       alert('تم استيراد النسخة الاحتياطية بنجاح');
     } catch (e) {
@@ -135,6 +138,24 @@ function setTodayRate(value) {
   save();
 }
 
+/* ---------------- Categories (الأصناف الثابتة) ---------------- */
+
+function addCategory(name) {
+  name = (name || '').trim();
+  if (!name) return;
+  if (state.categories.some(c => c.toLowerCase() === name.toLowerCase())) {
+    alert('هذا الصنف موجود مسبقاً');
+    return;
+  }
+  state.categories.push(name);
+  save();
+}
+function deleteCategory(name) {
+  if (!confirm(`حذف الصنف "${name}"؟ (المنتجات المصنّفة تحته حالياً لن تتأثر، فقط لن يظهر بالقائمة لاحقاً)`)) return;
+  state.categories = state.categories.filter(c => c !== name);
+  save();
+}
+
 /* ---------------- Products ---------------- */
 
 function baseUnitFactor(unit) { return unit === 'kg' ? 1000 : 1; }
@@ -174,7 +195,40 @@ function updateProduct(id, patch) {
 function deleteProduct(id) {
   if (!confirm('هل تريد حذف هذا المنتج نهائياً؟')) return;
   state.products = state.products.filter(x => x.id !== id);
+  if (editingProductId === id) cancelEditProduct();
   save();
+}
+
+function startEditProduct(id) {
+  const p = state.products.find(x => x.id === id);
+  if (!p) return;
+  editingProductId = id;
+
+  document.getElementById('p_name').value = p.name;
+  document.getElementById('p_unit').value = p.unit;
+  document.getElementById('p_unit').dispatchEvent(new Event('change'));
+  setSelectValueEnsured(document.getElementById('p_category'), p.category || '');
+  document.getElementById('p_qty').value = p.unit === 'kg' ? (p.stock / 1000) : p.stock;
+  document.getElementById('p_cartonSize').value = p.unitsPerCarton || '';
+  document.getElementById('p_cartonSizeEcho').textContent = p.unitsPerCarton || '—';
+  document.getElementById('p_purchase').value = p.purchasePriceUSD;
+  document.getElementById('p_sell').value = p.sellPriceUSD ?? '';
+  document.getElementById('p_supplier').value = p.supplierId || '';
+
+  document.getElementById('productFormTitle').textContent = 'تعديل المنتج: ' + p.name;
+  document.getElementById('productSubmitBtn').textContent = 'حفظ التعديلات';
+  document.getElementById('cancelEditBtn').classList.remove('hidden');
+  document.getElementById('productForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelEditProduct() {
+  editingProductId = null;
+  document.getElementById('productForm').reset();
+  document.getElementById('p_unit').dispatchEvent(new Event('change'));
+  document.getElementById('p_cartonSizeEcho').textContent = '—';
+  document.getElementById('productFormTitle').textContent = 'إضافة منتج جديد';
+  document.getElementById('productSubmitBtn').textContent = 'إضافة المنتج';
+  document.getElementById('cancelEditBtn').classList.add('hidden');
 }
 
 /* ---------------- Suppliers ---------------- */
@@ -269,12 +323,41 @@ function deleteSale(id) {
 
 function renderAll() {
   renderDashboard();
+  renderCategories();
   renderProducts();
   renderInventory();
   renderSell();
   renderSuppliers();
   renderReports();
   renderPrintOptions();
+}
+
+function renderCategories() {
+  const container = document.getElementById('categoryChips');
+  container.innerHTML = '';
+  state.categories.forEach(c => {
+    container.appendChild(el(`<span class="chip">${escapeHtml(c)} <button type="button" class="chip-remove" data-name="${escapeHtml(c)}">×</button></span>`));
+  });
+  container.querySelectorAll('.chip-remove').forEach(btn => btn.addEventListener('click', () => deleteCategory(btn.dataset.name)));
+  populateCategorySelect(document.getElementById('p_category'), true);
+}
+
+function populateCategorySelect(selectEl, includeEmpty) {
+  const current = selectEl.value;
+  selectEl.innerHTML = '';
+  if (includeEmpty) selectEl.appendChild(el(`<option value="">— اختر صنف —</option>`));
+  state.categories.forEach(c => {
+    selectEl.appendChild(el(`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`));
+  });
+  if ([...selectEl.options].some(o => o.value === current)) selectEl.value = current;
+}
+
+// يضمن ظهور قيمة موجودة مسبقاً (كصنف منتج قديم لم يعد بالقائمة الثابتة) كخيار بالقائمة بدل ضياعها
+function setSelectValueEnsured(selectEl, value) {
+  if (value && ![...selectEl.options].some(o => o.value === value)) {
+    selectEl.appendChild(el(`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`));
+  }
+  selectEl.value = value || '';
 }
 
 function populateProductSelect(selectEl, includeEmpty, filterFn, emptyLabel) {
@@ -362,6 +445,7 @@ function renderProducts() {
           <td>${sellSYP}</td>
           <td>${supplier ? escapeHtml(supplier.name) : '—'}</td>
           <td>
+            <button class="link-btn edit-product-btn" data-id="${p.id}">تعديل</button>
             <button class="link-btn del-product-btn" data-id="${p.id}">حذف</button>
           </td>
         </tr>
@@ -369,6 +453,9 @@ function renderProducts() {
       tbody.appendChild(row);
     });
 
+  tbody.querySelectorAll('.edit-product-btn').forEach(btn => {
+    btn.addEventListener('click', () => startEditProduct(btn.dataset.id));
+  });
   tbody.querySelectorAll('.sell-price-input').forEach(input => {
     // يحفظ فوراً مع كل حرف يُكتب (بدون إعادة رسم الجدول، حتى لا يفقد الحقل التركيز أثناء الكتابة)
     input.addEventListener('input', () => {
@@ -680,7 +767,50 @@ function updatePurchaseTotal() {
 
 /* ---------------- Reports ---------------- */
 
+function renderSaleSearch() {
+  const q = (document.getElementById('saleSearch').value || '').trim().toLowerCase();
+  const from = document.getElementById('saleSearchFrom').value;
+  const to = document.getElementById('saleSearchTo').value;
+  const tbody = document.getElementById('saleSearchTbody');
+  const totalsEl = document.getElementById('saleSearchTotals');
+
+  if (!q && !from && !to) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">اكتب اسم منتج أو زبون، أو اختر فترة تاريخ، لعرض نتائج البحث</td></tr>';
+    totalsEl.innerHTML = '';
+    return;
+  }
+
+  const results = state.sales
+    .filter(s => {
+      if (from && s.date < from) return false;
+      if (to && s.date > to) return false;
+      if (q && !(s.productName.toLowerCase().includes(q) || (s.customer || '').toLowerCase().includes(q))) return false;
+      return true;
+    })
+    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+
+  if (!results.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">لا توجد نتائج مطابقة</td></tr>';
+    totalsEl.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = results.map(s => {
+    const qtyLabel = s.unit === 'kg' ? fmt(s.qty, 1) + ' غ' : fmt(s.qty, 0) + ' حبة';
+    return `<tr>
+      <td>${s.date}</td><td>${s.time}</td><td>${escapeHtml(s.productName)}</td><td>${qtyLabel}</td>
+      <td>${fmt(s.revenueSYP)}</td><td>${fmt(s.profitSYP)}</td><td>${escapeHtml(s.customer || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  totalsEl.innerHTML =
+    `<span>عدد النتائج: ${results.length}</span>
+     <span>مجموع المبيعات: ${fmt(sum(results, 'revenueSYP'))} ل.س</span>
+     <span>مجموع الربح: ${fmt(sum(results, 'profitSYP'))} ل.س</span>`;
+}
+
 function renderReports() {
+  renderSaleSearch();
   const dateInput = document.getElementById('rep_date');
   if (!dateInput.value) dateInput.value = todayStr();
   const day = dateInput.value;
@@ -825,19 +955,45 @@ function setupProducts() {
   document.getElementById('productForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const sellVal = document.getElementById('p_sell').value;
-    addProduct({
+    const unit = unitSelect.value;
+    const data = {
       name: document.getElementById('p_name').value.trim(),
-      category: document.getElementById('p_category').value.trim(),
-      unit: unitSelect.value,
+      category: document.getElementById('p_category').value,
+      unit,
       stock: parseFloat(document.getElementById('p_qty').value) || 0,
       purchasePriceUSD: parseFloat(document.getElementById('p_purchase').value) || 0,
       sellPriceUSD: sellVal === '' ? null : parseFloat(sellVal),
-      unitsPerCarton: unitSelect.value === 'piece' ? (parseFloat(cartonSizeInput.value) || null) : null,
+      unitsPerCarton: unit === 'piece' ? (parseFloat(cartonSizeInput.value) || null) : null,
       supplierId: document.getElementById('p_supplier').value || null
-    });
-    e.target.reset();
-    refreshLabels();
-    document.getElementById('p_cartonSizeEcho').textContent = '—';
+    };
+
+    if (editingProductId) {
+      updateProduct(editingProductId, {
+        name: data.name,
+        category: data.category,
+        unit: data.unit,
+        stock: data.stock * baseUnitFactor(data.unit),
+        purchasePriceUSD: data.purchasePriceUSD,
+        sellPriceUSD: data.sellPriceUSD,
+        unitsPerCarton: data.unitsPerCarton,
+        supplierId: data.supplierId
+      });
+      cancelEditProduct();
+    } else {
+      addProduct(data);
+      e.target.reset();
+      refreshLabels();
+      document.getElementById('p_cartonSizeEcho').textContent = '—';
+    }
+  });
+
+  document.getElementById('cancelEditBtn').addEventListener('click', cancelEditProduct);
+
+  document.getElementById('categoryForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('cat_name');
+    addCategory(input.value);
+    input.value = '';
   });
 
   document.getElementById('productSearch').addEventListener('input', renderProducts);
@@ -971,6 +1127,16 @@ function setupSuppliers() {
 
 function setupReports() {
   document.getElementById('rep_date').addEventListener('change', renderReports);
+
+  document.getElementById('saleSearch').addEventListener('input', renderSaleSearch);
+  document.getElementById('saleSearchFrom').addEventListener('change', renderSaleSearch);
+  document.getElementById('saleSearchTo').addEventListener('change', renderSaleSearch);
+  document.getElementById('saleSearchClear').addEventListener('click', () => {
+    document.getElementById('saleSearch').value = '';
+    document.getElementById('saleSearchFrom').value = '';
+    document.getElementById('saleSearchTo').value = '';
+    renderSaleSearch();
+  });
 }
 
 function setupPrint() {

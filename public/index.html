@@ -112,13 +112,23 @@
     <!-- ==================== Products ==================== -->
     <section id="view-products" class="view">
       <div class="card">
-        <h2>إضافة منتج جديد</h2>
+        <h2>التصنيفات (الأصناف الثابتة)</h2>
+        <p class="hint">أضف هون الأصناف الثابتة يلي بدك تصنّف تحتها منتجاتك (مثلاً: بهارات، مكسرات، توابل...)، وبعدين اختارها عند إضافة أي منتج.</p>
+        <form id="categoryForm" class="row">
+          <input type="text" id="cat_name" placeholder="اسم صنف جديد" required>
+          <button type="submit" class="btn primary small">إضافة صنف</button>
+        </form>
+        <div class="category-chips" id="categoryChips"></div>
+      </div>
+
+      <div class="card">
+        <h2 id="productFormTitle">إضافة منتج جديد</h2>
         <form id="productForm" class="form-grid">
           <label>اسم المنتج
             <input type="text" id="p_name" required placeholder="مثال: بهار مشكل">
           </label>
           <label>التصنيف
-            <input type="text" id="p_category" placeholder="مثال: بهارات">
+            <select id="p_category"><option value="">— اختر صنف —</option></select>
           </label>
           <label>وحدة البيع
             <select id="p_unit">
@@ -151,7 +161,8 @@
             <select id="p_supplier"><option value="">— بدون —</option></select>
           </label>
           <div class="form-actions">
-            <button type="submit" class="btn primary">إضافة المنتج</button>
+            <button type="submit" class="btn primary" id="productSubmitBtn">إضافة المنتج</button>
+            <button type="button" class="btn hidden" id="cancelEditBtn">إلغاء التعديل</button>
           </div>
         </form>
       </div>
@@ -325,6 +336,24 @@
 
     <!-- ==================== Reports ==================== -->
     <section id="view-reports" class="view">
+      <div class="card">
+        <h2>🔍 البحث في المبيعات</h2>
+        <p class="hint">ابحث عن كل عمليات بيع منتج معيّن (أو زبون معيّن) بأي تاريخ، مش بس اليوم.</p>
+        <div class="row">
+          <input type="text" id="saleSearch" placeholder="اسم المنتج أو الزبون...">
+          <label>من <input type="date" id="saleSearchFrom"></label>
+          <label>إلى <input type="date" id="saleSearchTo"></label>
+          <button type="button" class="btn" id="saleSearchClear">مسح البحث</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>التاريخ</th><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ ل.س</th><th>الربح ل.س</th><th>الزبون</th></tr></thead>
+            <tbody id="saleSearchTbody"></tbody>
+          </table>
+        </div>
+        <div class="totals-row" id="saleSearchTotals"></div>
+      </div>
+
       <div class="card">
         <h2>تقرير يومي</h2>
         <div class="row">

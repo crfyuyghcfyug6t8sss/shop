@@ -28,7 +28,9 @@ function loadState() {
   state.sales = state.sales || [];
 }
 
-function save() {
+// يكتب البيانات فوراً على القرص (localStorage) بدون إعادة رسم الواجهة،
+// لضمان عدم ضياع أي تعديل (مثل الكتابة داخل حقل سعر) حتى لو أُغلق المتصفح فجأة قبل مغادرة الحقل
+function persist() {
   const indicator = document.getElementById('saveIndicator');
   try {
     state.meta = state.meta || {};
@@ -40,8 +42,14 @@ function save() {
     indicator.textContent = 'تعذّر الحفظ (مساحة التخزين ممتلئة؟)';
     indicator.className = 'save-indicator error';
   }
+}
+
+function save() {
+  persist();
   renderAll();
 }
+
+window.addEventListener('beforeunload', persist);
 
 function exportBackup() {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -362,10 +370,15 @@ function renderProducts() {
     });
 
   tbody.querySelectorAll('.sell-price-input').forEach(input => {
-    input.addEventListener('change', () => {
-      const val = input.value === '' ? null : parseFloat(input.value);
-      updateProduct(input.dataset.id, { sellPriceUSD: val });
+    // يحفظ فوراً مع كل حرف يُكتب (بدون إعادة رسم الجدول، حتى لا يفقد الحقل التركيز أثناء الكتابة)
+    input.addEventListener('input', () => {
+      const p = state.products.find(x => x.id === input.dataset.id);
+      if (!p) return;
+      p.sellPriceUSD = input.value === '' ? null : parseFloat(input.value);
+      persist();
     });
+    // عند مغادرة الحقل: إعادة رسم الواجهة لتحديث الأعمدة المحسوبة (السعر بالليرة) والتبويبات الأخرى
+    input.addEventListener('change', renderAll);
   });
   tbody.querySelectorAll('.del-product-btn').forEach(btn => {
     btn.addEventListener('click', () => deleteProduct(btn.dataset.id));

@@ -1,0 +1,11 @@
+{
+  "name": "spice-shop-accounting",
+  "version": "1.0.0",
+  "description": "نظام محاسبة محلي لمحل توابل وبهارات ومكسرات - تخزين البيانات في ملف JSON محلي بدون قاعدة بيانات",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نظام محاسبة محل التوابل</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌶️</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">🌶️ محاسبة محل التوابل والمكسرات</div>
+    <div class="save-indicator" id="saveIndicator">محفوظ</div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn active" data-view="dashboard">لوحة التحكم</button>
+    <button class="tab-btn" data-view="products">المنتجات</button>
+    <button class="tab-btn" data-view="sell">البيع</button>
+    <button class="tab-btn" data-view="suppliers">الموردين</button>
+    <button class="tab-btn" data-view="reports">التقارير</button>
+    <button class="tab-btn" data-view="print">الطباعة</button>
+  </nav>
+
+  <main id="main">
+
+    <!-- ==================== Dashboard ==================== -->
+    <section id="view-dashboard" class="view active">
+      <div class="grid-2">
+        <div class="card">
+          <h2>سعر صرف الدولار اليوم</h2>
+          <p class="hint">أدخل سعر الدولار مقابل الليرة السورية كل يوم، وسيتم تحديث أسعار البيع تلقائياً بناءً عليه.</p>
+          <div class="row">
+            <input type="number" id="rateInput" placeholder="مثال: 15000" min="0" step="1">
+            <button class="btn primary" id="saveRateBtn">حفظ سعر اليوم</button>
+          </div>
+          <div class="current-rate" id="currentRateDisplay">لا يوجد سعر مسجل بعد</div>
+          <div class="rate-history" id="rateHistory"></div>
+        </div>
+
+        <div class="card">
+          <h2>ملخص سريع</h2>
+          <div class="stat-grid">
+            <div class="stat-box">
+              <div class="stat-label">مبيعات اليوم</div>
+              <div class="stat-value" id="statTodaySales">0</div>
+            </div>
+            <div class="stat-box profit">
+              <div class="stat-label">ربح اليوم</div>
+              <div class="stat-value" id="statTodayProfit">0</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">مبيعات الأسبوع</div>
+              <div class="stat-value" id="statWeekSales">0</div>
+            </div>
+            <div class="stat-box profit">
+              <div class="stat-label">ربح الأسبوع</div>
+              <div class="stat-value" id="statWeekProfit">0</div>
+            </div>
+          </div>
+          <div class="stat-sub">
+            <span>عدد المنتجات: <b id="statProductCount">0</b></span>
+            <span>منتجات بدون سعر بيع: <b id="statNoPriceCount">0</b></span>
+            <span>عدد الموردين: <b id="statSupplierCount">0</b></span>
+            <span>مستحقات للموردين: <b id="statSupplierDebt">0</b> $</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Products ==================== -->
+    <section id="view-products" class="view">
+      <div class="card">
+        <h2>إضافة منتج جديد</h2>
+        <form id="productForm" class="form-grid">
+          <label>اسم المنتج
+            <input type="text" id="p_name" required placeholder="مثال: بهار مشكل">
+          </label>
+          <label>التصنيف
+            <input type="text" id="p_category" placeholder="مثال: بهارات">
+          </label>
+          <label>وحدة البيع
+            <select id="p_unit">
+              <option value="kg">وزن (غرام/كغ)</option>
+              <option value="piece">قطعة/حبة</option>
+            </select>
+          </label>
+          <label>الكمية الحالية <span id="p_qty_unit_label">(غرام)</span>
+            <input type="number" id="p_qty" min="0" step="any" required placeholder="0">
+          </label>
+          <label>سعر الشراء بالدولار <span id="p_purchase_unit_label">(لكل كغ)</span>
+            <input type="number" id="p_purchase" min="0" step="any" required placeholder="0.00">
+          </label>
+          <label>سعر البيع بالدولار <span id="p_sell_unit_label">(لكل كغ)</span> <small>(اختياري)</small>
+            <input type="number" id="p_sell" min="0" step="any" placeholder="اتركه فارغاً إذا لم تحدده بعد">
+          </label>
+          <label>المورد <small>(اختياري)</small>
+            <select id="p_supplier"><option value="">— بدون —</option></select>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn primary">إضافة المنتج</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-header-row">
+          <h2>قائمة المنتجات</h2>
+          <input type="text" id="productSearch" placeholder="بحث عن منتج...">
+        </div>
+        <div class="table-wrap">
+          <table id="productsTable">
+            <thead>
+              <tr>
+                <th>الاسم</th>
+                <th>التصنيف</th>
+                <th>الوحدة</th>
+                <th>الكمية المتوفرة</th>
+                <th>سعر الشراء $</th>
+                <th>سعر البيع $</th>
+                <th>سعر البيع ل.س (اليوم)</th>
+                <th>المورد</th>
+                <th>إجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="productsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Sell / POS ==================== -->
+    <section id="view-sell" class="view">
+      <div class="grid-2">
+        <div class="card">
+          <h2>عملية بيع جديدة</h2>
+          <form id="sellForm">
+            <label>المنتج
+              <select id="s_product" required></select>
+            </label>
+            <div id="s_productInfo" class="product-info"></div>
+
+            <div class="mode-toggle" id="s_modeToggle">
+              <button type="button" class="mode-btn active" data-mode="qty">حسب الكمية</button>
+              <button type="button" class="mode-btn" data-mode="amount">حسب المبلغ (ل.س)</button>
+            </div>
+
+            <label id="s_qtyLabel">الكمية المباعة <span id="s_qtyUnitLabel">(غرام)</span>
+              <input type="number" id="s_qty" min="0" step="any" placeholder="مثال: 300">
+            </label>
+            <label id="s_amountLabel" class="hidden">المبلغ المستلم (ليرة سورية)
+              <input type="number" id="s_amount" min="0" step="any" placeholder="مثال: 1000">
+            </label>
+
+            <label>اسم الزبون <small>(اختياري)</small>
+              <input type="text" id="s_customer" placeholder="اختياري">
+            </label>
+
+            <div class="preview-box" id="s_preview"></div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn primary" id="s_confirmBtn">تأكيد البيع</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>مبيعات اليوم</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ ل.س</th><th>الربح ل.س</th><th>الزبون</th><th></th></tr>
+              </thead>
+              <tbody id="todaySalesTbody"></tbody>
+            </table>
+          </div>
+          <div class="totals-row" id="todaySalesTotals"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Suppliers ==================== -->
+    <section id="view-suppliers" class="view">
+      <div class="grid-2">
+        <div class="card">
+          <h2>إضافة مورد جديد</h2>
+          <form id="supplierForm" class="form-grid">
+            <label>اسم المورد / التاجر
+              <input type="text" id="sup_name" required placeholder="مثال: أبو أحمد للتوابل">
+            </label>
+            <label>رقم الهاتف <small>(اختياري)</small>
+              <input type="text" id="sup_phone" placeholder="اختياري">
+            </label>
+            <label>ملاحظات <small>(اختياري)</small>
+              <input type="text" id="sup_notes" placeholder="اختياري">
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="btn primary">إضافة المورد</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>الموردون</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>الاسم</th><th>الهاتف</th><th>المستحق $</th><th></th></tr></thead>
+              <tbody id="suppliersTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="supplierDetailCard">
+        <div class="card-header-row">
+          <h2 id="supplierDetailName">دفتر حساب المورد</h2>
+          <button class="btn" id="closeSupplierDetail">إغلاق</button>
+        </div>
+        <div class="stat-grid small">
+          <div class="stat-box"><div class="stat-label">إجمالي المشتريات $</div><div class="stat-value" id="sup_totalPurchases">0</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي المدفوع $</div><div class="stat-value" id="sup_totalPaid">0</div></div>
+          <div class="stat-box debt"><div class="stat-label">المتبقي (مستحق عليّ) $</div><div class="stat-value" id="sup_balance">0</div></div>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <h3>تسجيل عملية شراء</h3>
+            <form id="purchaseForm">
+              <div id="purchaseItems"></div>
+              <button type="button" class="btn small" id="addPurchaseItemBtn">+ إضافة صنف</button>
+              <div class="purchase-total">الإجمالي: <b id="purchaseTotalDisplay">0.00</b> $</div>
+              <label>طريقة الدفع
+                <select id="pur_paymentMethod">
+                  <option value="cash">نقدي (دفع كامل الآن)</option>
+                  <option value="partial">دفعة جزئية الآن</option>
+                  <option value="credit">آجل (بدون دفع الآن)</option>
+                </select>
+              </label>
+              <label id="pur_paidNowWrap" class="hidden">المبلغ المدفوع الآن $
+                <input type="number" id="pur_paidNow" min="0" step="any" placeholder="0.00">
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn primary">تسجيل الشراء</button>
+              </div>
+            </form>
+          </div>
+          <div>
+            <h3>تسجيل دفعة (تسديد)</h3>
+            <form id="paymentForm">
+              <label>المبلغ المدفوع $
+                <input type="number" id="pay_amount" min="0" step="any" required placeholder="0.00">
+              </label>
+              <label>ملاحظة <small>(اختياري)</small>
+                <input type="text" id="pay_note" placeholder="اختياري">
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn primary">تسجيل الدفعة</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <h3>سجل الحساب</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>التاريخ</th><th>النوع</th><th>التفاصيل</th><th>المبلغ $</th><th>المدفوع $</th><th></th></tr></thead>
+            <tbody id="supplierTransactionsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Reports ==================== -->
+    <section id="view-reports" class="view">
+      <div class="card">
+        <h2>تقرير يومي</h2>
+        <div class="row">
+          <label>اختر اليوم
+            <input type="date" id="rep_date">
+          </label>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">عدد عمليات البيع</div><div class="stat-value" id="rep_count">0</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي المبيعات ل.س</div><div class="stat-value" id="rep_revenue">0</div></div>
+          <div class="stat-box profit"><div class="stat-label">إجمالي الربح ل.س</div><div class="stat-value" id="rep_profit">0</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ ل.س</th><th>الربح ل.س</th><th>الزبون</th></tr></thead>
+            <tbody id="rep_dailyTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>تقرير أسبوعي (آخر 7 أيام من اليوم المختار)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>اليوم</th><th>عدد العمليات</th><th>المبيعات ل.س</th><th>الربح ل.س</th></tr></thead>
+            <tbody id="rep_weeklyTbody"></tbody>
+          </table>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">إجمالي مبيعات الأسبوع</div><div class="stat-value" id="rep_weekRevenue">0</div></div>
+          <div class="stat-box profit"><div class="stat-label">إجمالي ربح الأسبوع</div><div class="stat-value" id="rep_weekProfit">0</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Print ==================== -->
+    <section id="view-print" class="view">
+      <div class="card">
+        <h2>طباعة قائمة الأصناف</h2>
+        <div class="form-grid">
+          <label>التصنيف
+            <select id="pr_category"><option value="">كل التصنيفات</option></select>
+          </label>
+          <label>محتوى الطباعة
+            <select id="pr_content">
+              <option value="names">الأسماء فقط</option>
+              <option value="withPrices">الأسماء مع الأسعار</option>
+            </select>
+          </label>
+          <label id="pr_currencyWrap">العملة
+            <select id="pr_currency">
+              <option value="SYP">ليرة سورية</option>
+              <option value="USD">دولار</option>
+            </select>
+          </label>
+          <label>عنوان الورقة
+            <input type="text" id="pr_title" value="قائمة الأصناف والأسعار">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn primary" id="pr_printBtn">طباعة</button>
+        </div>
+
+        <div class="print-preview-wrap">
+          <div id="printArea">
+            <h2 id="printTitle"></h2>
+            <div id="printDate"></div>
+            <table id="printTable">
+              <thead id="printThead"></thead>
+              <tbody id="printTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

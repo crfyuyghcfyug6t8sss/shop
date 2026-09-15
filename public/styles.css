@@ -273,6 +273,28 @@ tbody tr:hover { background: #fdf8f1; }
 }
 .purchase-total { margin: 10px 0; font-size: 1.05rem; }
 
+.checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 8px;
+}
+.checkbox-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+  font-weight: normal !important;
+  cursor: pointer;
+}
+.checkbox-label input { width: 16px; height: 16px; cursor: pointer; }
+
+.fill-blank {
+  display: inline-block;
+  min-width: 70px;
+  border-bottom: 1px solid #333;
+}
+
 .print-preview-wrap {
   margin-top: 20px;
   border: 1px dashed var(--border);

@@ -733,12 +733,15 @@ function renderPrintOptions() {
 
 function buildPrintPreview() {
   const category = document.getElementById('pr_category').value;
-  const content = document.getElementById('pr_content').value;
+  const showQty = document.getElementById('pr_showQty').checked;
+  const showCost = document.getElementById('pr_showCost').checked;
+  const showSell = document.getElementById('pr_showSell').checked;
   const currency = document.getElementById('pr_currency').value;
+  const currencyLabel = currency === 'USD' ? 'دولار' : 'ل.س';
   const title = document.getElementById('pr_title').value || 'قائمة الأصناف';
   const rate = getCurrentRate();
 
-  document.getElementById('pr_currencyWrap').style.display = content === 'withPrices' ? '' : 'none';
+  document.getElementById('pr_currencyWrap').style.display = (showCost || showSell) ? '' : 'none';
 
   document.getElementById('printTitle').textContent = title;
   document.getElementById('printDate').textContent = 'تاريخ: ' + todayStr();
@@ -747,20 +750,29 @@ function buildPrintPreview() {
   const tbody = document.getElementById('printTbody');
   const products = state.products.filter(p => !category || p.category === category);
 
-  if (content === 'names') {
-    thead.innerHTML = '<tr><th>#</th><th>اسم الصنف</th><th>التصنيف</th></tr>';
-    tbody.innerHTML = products.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.category || '—')}</td></tr>`).join('');
-  } else {
-    thead.innerHTML = `<tr><th>#</th><th>اسم الصنف</th><th>التصنيف</th><th>السعر (${currency === 'USD' ? 'دولار' : 'ل.س'})</th></tr>`;
-    tbody.innerHTML = products.map((p, i) => {
-      let priceLabel = '—';
-      if (p.sellPriceUSD != null) {
-        if (currency === 'USD') priceLabel = fmt(p.sellPriceUSD, 2) + ' / ' + (p.unit === 'kg' ? 'كغ' : 'حبة');
-        else if (rate) priceLabel = fmt(p.sellPriceUSD * rate, 0) + ' / ' + (p.unit === 'kg' ? 'كغ' : 'حبة');
-      }
-      return `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.category || '—')}</td><td>${priceLabel}</td></tr>`;
-    }).join('');
+  // خانة سعر: فراغ قابل للتعبئة باليد إذا السعر غير محدد، أو إذا العملة ليرة ولا يوجد سعر صرف بعد
+  function priceCell(usdVal, unit) {
+    if (usdVal == null) return '<span class="fill-blank"></span>';
+    let value;
+    if (currency === 'USD') value = fmt(usdVal, 2);
+    else if (rate) value = fmt(usdVal * rate, 0);
+    else return '<span class="fill-blank"></span>';
+    return value + ' / ' + (unit === 'kg' ? 'كغ' : 'حبة');
   }
+
+  const headers = ['#', 'اسم الصنف', 'التصنيف'];
+  if (showQty) headers.push('الكمية المتوفرة');
+  if (showCost) headers.push(`رأس المال (${currencyLabel})`);
+  if (showSell) headers.push(`سعر البيع (${currencyLabel})`);
+  thead.innerHTML = '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+
+  tbody.innerHTML = products.map((p, i) => {
+    const cells = [String(i + 1), escapeHtml(p.name), escapeHtml(p.category || '—')];
+    if (showQty) cells.push(stockDisplay(p));
+    if (showCost) cells.push(priceCell(p.purchasePriceUSD, p.unit));
+    if (showSell) cells.push(priceCell(p.sellPriceUSD, p.unit));
+    return '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+  }).join('');
 }
 
 /* ---------------- Event wiring ---------------- */
@@ -962,7 +974,7 @@ function setupReports() {
 }
 
 function setupPrint() {
-  ['pr_category', 'pr_content', 'pr_currency', 'pr_title'].forEach(id => {
+  ['pr_category', 'pr_currency', 'pr_title', 'pr_showQty', 'pr_showCost', 'pr_showSell'].forEach(id => {
     document.getElementById(id).addEventListener('input', buildPrintPreview);
     document.getElementById(id).addEventListener('change', buildPrintPreview);
   });

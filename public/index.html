@@ -368,22 +368,27 @@
           <label>التصنيف
             <select id="pr_category"><option value="">كل التصنيفات</option></select>
           </label>
-          <label>محتوى الطباعة
-            <select id="pr_content">
-              <option value="names">الأسماء فقط</option>
-              <option value="withPrices">الأسماء مع الأسعار</option>
-            </select>
+          <label>عنوان الورقة
+            <input type="text" id="pr_title" value="قائمة الأصناف والأسعار">
           </label>
-          <label id="pr_currencyWrap">العملة
+        </div>
+
+        <div class="hint" style="margin-top:10px">اختر الأعمدة التي تريد ظهورها بالورقة (يمكن الجمع بينها كيفما تريد):</div>
+        <div class="checkbox-row">
+          <label class="checkbox-label"><input type="checkbox" id="pr_showQty"> الكمية المتوفرة</label>
+          <label class="checkbox-label"><input type="checkbox" id="pr_showCost"> رأس المال (سعر الشراء)</label>
+          <label class="checkbox-label"><input type="checkbox" id="pr_showSell" checked> سعر البيع</label>
+        </div>
+        <div class="row" id="pr_currencyWrap" style="margin-top:10px">
+          <label>عملة الأسعار
             <select id="pr_currency">
               <option value="SYP">ليرة سورية</option>
               <option value="USD">دولار</option>
             </select>
           </label>
-          <label>عنوان الورقة
-            <input type="text" id="pr_title" value="قائمة الأصناف والأسعار">
-          </label>
         </div>
+        <p class="hint">أي سعر بيع غير محدد بعد سيُطبع كخانة فارغة (خط) لتعبئته باليد على الورقة.</p>
+
         <div class="form-actions">
           <button class="btn primary" id="pr_printBtn">طباعة</button>
         </div>

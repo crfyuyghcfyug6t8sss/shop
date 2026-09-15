@@ -19,6 +19,7 @@
   <nav class="tabs" id="tabs">
     <button class="tab-btn active" data-view="dashboard">لوحة التحكم</button>
     <button class="tab-btn" data-view="products">المنتجات</button>
+    <button class="tab-btn" data-view="inventory">الجرد</button>
     <button class="tab-btn" data-view="sell">البيع</button>
     <button class="tab-btn" data-view="suppliers">الموردين</button>
     <button class="tab-btn" data-view="reports">التقارير</button>
@@ -69,6 +70,43 @@
           </div>
         </div>
       </div>
+
+      <div class="card">
+        <h2>نسخ احتياطي للبيانات</h2>
+        <p class="hint">البيانات محفوظة تلقائياً في هذا المتصفح على هذا الجهاز. يُفضّل تنزيل نسخة احتياطية بين فترة وأخرى، خصوصاً قبل تنظيف المتصفح أو تغيير الجهاز.</p>
+        <div class="row">
+          <button class="btn primary" id="exportBtn">⬇️ تنزيل نسخة احتياطية</button>
+          <button class="btn" id="importBtn">⬆️ استيراد نسخة احتياطية</button>
+          <input type="file" id="importFile" accept="application/json" class="hidden">
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Inventory (الجرد) ==================== -->
+    <section id="view-inventory" class="view">
+      <div class="card">
+        <div class="card-header-row">
+          <h2>الجرد — المخزون الحالي</h2>
+          <input type="text" id="invSearch" placeholder="بحث عن منتج...">
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">قيمة المخزون (تكلفة) $</div><div class="stat-value" id="inv_totalCost">0</div></div>
+          <div class="stat-box profit"><div class="stat-label">القيمة المتوقعة عند البيع $</div><div class="stat-value" id="inv_totalSellUSD">0</div></div>
+          <div class="stat-box profit"><div class="stat-label">القيمة المتوقعة عند البيع ل.س</div><div class="stat-value" id="inv_totalSellSYP">0</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>الاسم</th><th>التصنيف</th><th>الكمية المتوفرة</th>
+                <th>سعر الشراء $</th><th>قيمة المخزون $</th>
+                <th>سعر البيع $</th><th>القيمة المتوقعة عند البيع $</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryTbody"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- ==================== Products ==================== -->
@@ -91,6 +129,18 @@
           <label>الكمية الحالية <span id="p_qty_unit_label">(غرام)</span>
             <input type="number" id="p_qty" min="0" step="any" required placeholder="0">
           </label>
+          <label id="p_cartonSizeWrap" class="hidden">عدد القطع بالكرتونة الواحدة <small>(اختياري - لتسهيل إدخال الكميات لاحقاً)</small>
+            <input type="number" id="p_cartonSize" min="0" step="any" placeholder="مثال: 12">
+          </label>
+          <div id="p_cartonHelperWrap" class="carton-helper hidden">
+            <small>أو احسب الكمية من عدد الكراتين:</small>
+            <div class="row">
+              <input type="number" id="p_cartonsCount" min="0" step="any" placeholder="عدد الكراتين">
+              <span>×</span>
+              <span id="p_cartonSizeEcho">—</span>
+              <button type="button" class="btn small" id="p_cartonCalcBtn">تعبئة الكمية</button>
+            </div>
+          </div>
           <label>سعر الشراء بالدولار <span id="p_purchase_unit_label">(لكل كغ)</span>
             <input type="number" id="p_purchase" min="0" step="any" required placeholder="0.00">
           </label>

@@ -1,45 +1,79 @@
 /* =========================================================
    نظام محاسبة محل التوابل - المنطق الرئيسي
-   التخزين: ملف JSON محلي عبر /api/data (بدون قاعدة بيانات SQL)
+   التخزين: محلي في هذا المتصفح (localStorage) - بدون سيرفر وبدون قاعدة بيانات
+   يفتح مباشرة بفتح index.html في المتصفح
    ========================================================= */
+
+const STORAGE_KEY = 'spiceShopAccountingData_v1';
 
 let state = { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [] };
 let currentSupplierId = null;
 let sellMode = 'qty';
 let purchaseItemsDraft = [];
 
-/* ---------------- Persistence ---------------- */
+/* ---------------- Persistence (localStorage) ---------------- */
 
-async function loadState() {
-  const res = await fetch('/api/data');
-  state = await res.json();
+function defaultState() { return { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [] }; }
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    state = raw ? JSON.parse(raw) : defaultState();
+  } catch (e) {
+    state = defaultState();
+  }
   state.exchangeRates = state.exchangeRates || [];
   state.products = state.products || [];
   state.suppliers = state.suppliers || [];
   state.sales = state.sales || [];
 }
 
-let saveTimer = null;
 function save() {
   const indicator = document.getElementById('saveIndicator');
-  indicator.textContent = 'جارٍ الحفظ...';
-  indicator.className = 'save-indicator saving';
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try {
-      await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state)
-      });
-      indicator.textContent = 'محفوظ';
-      indicator.className = 'save-indicator';
-    } catch (e) {
-      indicator.textContent = 'خطأ في الحفظ';
-      indicator.className = 'save-indicator error';
-    }
-  }, 250);
+  try {
+    state.meta = state.meta || {};
+    state.meta.lastSaved = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    indicator.textContent = 'محفوظ';
+    indicator.className = 'save-indicator';
+  } catch (e) {
+    indicator.textContent = 'تعذّر الحفظ (مساحة التخزين ممتلئة؟)';
+    indicator.className = 'save-indicator error';
+  }
   renderAll();
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `نسخة-احتياطية-المحل-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importBackup(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (typeof parsed !== 'object' || parsed === null) throw new Error('invalid');
+      if (!confirm('سيتم استبدال كل البيانات الحالية بالنسخة المستوردة. متابعة؟')) return;
+      state = parsed;
+      state.exchangeRates = state.exchangeRates || [];
+      state.products = state.products || [];
+      state.suppliers = state.suppliers || [];
+      state.sales = state.sales || [];
+      save();
+      alert('تم استيراد النسخة الاحتياطية بنجاح');
+    } catch (e) {
+      alert('الملف غير صالح، تأكد أنه نسخة احتياطية صحيحة بصيغة JSON');
+    }
+  };
+  reader.readAsText(file);
 }
 
 /* ---------------- Utilities ---------------- */
@@ -98,7 +132,13 @@ function setTodayRate(value) {
 function baseUnitFactor(unit) { return unit === 'kg' ? 1000 : 1; }
 function stockDisplay(product) {
   if (product.unit === 'kg') return fmt(product.stock / 1000, 2) + ' كغ';
-  return fmt(product.stock, 0) + ' حبة';
+  let label = fmt(product.stock, 0) + ' حبة';
+  if (product.unitsPerCarton) {
+    const cartons = Math.floor(product.stock / product.unitsPerCarton);
+    const rest = product.stock % product.unitsPerCarton;
+    label += ` (≈ ${cartons} كرتونة` + (rest ? ` + ${fmt(rest, 0)} حبة` : '') + ')';
+  }
+  return label;
 }
 function unitPriceLabel(unit) { return unit === 'kg' ? 'لكل كغ' : 'لكل حبة'; }
 
@@ -111,6 +151,7 @@ function addProduct(data) {
     stock: data.stock * baseUnitFactor(data.unit),
     purchasePriceUSD: data.purchasePriceUSD,
     sellPriceUSD: data.sellPriceUSD,
+    unitsPerCarton: data.unitsPerCarton || null,
     supplierId: data.supplierId || null,
     createdAt: new Date().toISOString()
   });
@@ -221,6 +262,7 @@ function deleteSale(id) {
 function renderAll() {
   renderDashboard();
   renderProducts();
+  renderInventory();
   renderSell();
   renderSuppliers();
   renderReports();
@@ -330,6 +372,39 @@ function renderProducts() {
   });
 
   populateSupplierSelect(document.getElementById('p_supplier'), true);
+}
+
+/* ---------------- Inventory (الجرد) view ---------------- */
+
+function renderInventory() {
+  const tbody = document.getElementById('inventoryTbody');
+  const search = (document.getElementById('invSearch').value || '').trim().toLowerCase();
+  const rate = getCurrentRate();
+  tbody.innerHTML = '';
+  let totalCost = 0, totalSellUSD = 0;
+  state.products
+    .filter(p => !search || p.name.toLowerCase().includes(search) || (p.category || '').toLowerCase().includes(search))
+    .forEach(p => {
+      const factor = baseUnitFactor(p.unit);
+      const costValue = (p.stock / factor) * p.purchasePriceUSD;
+      const sellValue = p.sellPriceUSD != null ? (p.stock / factor) * p.sellPriceUSD : null;
+      totalCost += costValue;
+      if (sellValue != null) totalSellUSD += sellValue;
+      tbody.appendChild(el(`
+        <tr>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.category || '—')}</td>
+          <td>${stockDisplay(p)}</td>
+          <td>${fmt(p.purchasePriceUSD, 2)}</td>
+          <td>${fmt(costValue, 2)}</td>
+          <td>${p.sellPriceUSD != null ? fmt(p.sellPriceUSD, 2) : '—'}</td>
+          <td>${sellValue != null ? fmt(sellValue, 2) : '—'}</td>
+        </tr>
+      `));
+    });
+  document.getElementById('inv_totalCost').textContent = fmt(totalCost, 2);
+  document.getElementById('inv_totalSellUSD').textContent = fmt(totalSellUSD, 2);
+  document.getElementById('inv_totalSellSYP').textContent = rate ? fmt(totalSellUSD * rate, 0) : '—';
 }
 
 /* ---------------- Sell / POS view ---------------- */
@@ -551,10 +626,35 @@ function renderPurchaseItemsDraft() {
     wrap.appendChild(removeBtn);
     container.appendChild(wrap);
 
-    if (row.productId) {
-      const prod = state.products.find(p => p.id === row.productId);
-      const hint = el(`<small style="grid-column:1/-1;color:var(--muted)">الكمية بوحدة: ${prod && prod.unit === 'kg' ? 'كغ' : 'حبة'} — سعر الوحدة بالدولار ${prod ? unitPriceLabel(prod.unit) : ''}</small>`);
+    const prod = row.productId ? state.products.find(p => p.id === row.productId) : null;
+    if (prod) {
+      const hint = el(`<small style="grid-column:1/-1;color:var(--muted)">الكمية بوحدة: ${prod.unit === 'kg' ? 'كغ' : 'حبة'} — سعر الوحدة بالدولار ${unitPriceLabel(prod.unit)}</small>`);
       container.appendChild(hint);
+    }
+
+    // مساعد الكراتين: لمنتجات القطعة (مثال: اشتريت 5 كراتين، كل كرتونة فيها ظرف)
+    if (prod && prod.unit === 'piece') {
+      const helper = el(`
+        <div class="carton-helper" style="margin-bottom:10px">
+          <small>احسب الكمية (بالحبة) من عدد الكراتين:</small>
+          <div class="row">
+            <input type="number" class="ci-cartons" min="0" step="any" placeholder="عدد الكراتين">
+            <span>×</span>
+            <input type="number" class="ci-perCarton" min="0" step="any" placeholder="قطع/كرتونة" value="${prod.unitsPerCarton || ''}">
+            <button type="button" class="btn small ci-calc">تعبئة الكمية</button>
+          </div>
+        </div>
+      `);
+      helper.querySelector('.ci-calc').addEventListener('click', () => {
+        const cartons = parseFloat(helper.querySelector('.ci-cartons').value) || 0;
+        const perCarton = parseFloat(helper.querySelector('.ci-perCarton').value) || 0;
+        if (!cartons || !perCarton) { alert('أدخل عدد الكراتين وعدد القطع بالكرتونة'); return; }
+        row.qty = cartons * perCarton;
+        if (prod.unitsPerCarton !== perCarton) updateProduct(prod.id, { unitsPerCarton: perCarton });
+        renderPurchaseItemsDraft();
+        updatePurchaseTotal();
+      });
+      container.appendChild(helper);
     }
   });
   updatePurchaseTotal();
@@ -674,14 +774,28 @@ function setupDashboard() {
 
 function setupProducts() {
   const unitSelect = document.getElementById('p_unit');
+  const cartonSizeInput = document.getElementById('p_cartonSize');
   function refreshLabels() {
     const isKg = unitSelect.value === 'kg';
     document.getElementById('p_qty_unit_label').textContent = isKg ? '(كغ)' : '(حبة)';
     document.getElementById('p_purchase_unit_label').textContent = isKg ? '(لكل كغ)' : '(لكل حبة)';
     document.getElementById('p_sell_unit_label').textContent = isKg ? '(لكل كغ)' : '(لكل حبة)';
+    document.getElementById('p_cartonSizeWrap').classList.toggle('hidden', isKg);
+    document.getElementById('p_cartonHelperWrap').classList.toggle('hidden', isKg);
   }
   unitSelect.addEventListener('change', refreshLabels);
   refreshLabels();
+
+  cartonSizeInput.addEventListener('input', () => {
+    document.getElementById('p_cartonSizeEcho').textContent = cartonSizeInput.value || '—';
+  });
+
+  document.getElementById('p_cartonCalcBtn').addEventListener('click', () => {
+    const cartons = parseFloat(document.getElementById('p_cartonsCount').value) || 0;
+    const perCarton = parseFloat(cartonSizeInput.value) || 0;
+    if (!cartons || !perCarton) { alert('أدخل عدد الكراتين وعدد القطع بالكرتونة أولاً'); return; }
+    document.getElementById('p_qty').value = cartons * perCarton;
+  });
 
   document.getElementById('productForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -693,13 +807,29 @@ function setupProducts() {
       stock: parseFloat(document.getElementById('p_qty').value) || 0,
       purchasePriceUSD: parseFloat(document.getElementById('p_purchase').value) || 0,
       sellPriceUSD: sellVal === '' ? null : parseFloat(sellVal),
+      unitsPerCarton: unitSelect.value === 'piece' ? (parseFloat(cartonSizeInput.value) || null) : null,
       supplierId: document.getElementById('p_supplier').value || null
     });
     e.target.reset();
     refreshLabels();
+    document.getElementById('p_cartonSizeEcho').textContent = '—';
   });
 
   document.getElementById('productSearch').addEventListener('input', renderProducts);
+}
+
+function setupInventory() {
+  document.getElementById('invSearch').addEventListener('input', renderInventory);
+}
+
+function setupBackup() {
+  document.getElementById('exportBtn').addEventListener('click', exportBackup);
+  document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) importBackup(file);
+    e.target.value = '';
+  });
 }
 
 function setupSell() {
@@ -831,11 +961,13 @@ function setupPrint() {
 
 /* ---------------- Init ---------------- */
 
-async function init() {
-  await loadState();
+function init() {
+  loadState();
   setupTabs();
   setupDashboard();
+  setupBackup();
   setupProducts();
+  setupInventory();
   setupSell();
   setupSuppliers();
   setupReports();

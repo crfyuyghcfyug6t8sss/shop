@@ -254,6 +254,16 @@ tbody tr:hover { background: #fdf8f1; }
   color: var(--brown-dark);
 }
 
+.carton-helper {
+  grid-column: 1 / -1;
+  background: #fbeedd;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: -6px;
+}
+.carton-helper .row { margin-top: 6px; }
+.carton-helper input[type="number"] { width: 120px; }
+
 .purchase-item-row {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr auto;

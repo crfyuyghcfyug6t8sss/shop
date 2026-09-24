@@ -1159,8 +1159,9 @@ function buildStickerSheets() {
   const stickerHtml = p => {
     const price = stickerPrice(p, rate);
     return `<div class="sticker">
-      ${logo ? `<img class="st-logo" src="${logo}" alt="">` : ''}
+      ${logo ? `<div class="st-logo-wrap"><img class="st-logo" src="${logo}" alt=""></div>` : ''}
       <div class="st-name">${escapeHtml(p.name)}</div>
+      <div class="st-divider"></div>
       <div class="st-label">${p.unit === 'kg' ? 'السعر لكل 100 غرام' : 'سعر الحبة'}</div>
       <div class="st-price">${price != null ? `${price} <small>ل.س</small>` : '<span class="st-blank"></span>'}</div>
     </div>`;
@@ -1171,6 +1172,7 @@ function buildStickerSheets() {
     pages.push(`<div class="sticker-page layout-${layoutKey}">${items.slice(i, i + perPage).map(stickerHtml).join('')}</div>`);
   }
   document.getElementById('stickerSheets').innerHTML = pages.join('');
+  fitStickerNames();
 
   const noPrice = items.filter(p => stickerPrice(p, rate) == null).length;
   document.getElementById('st_summary').textContent = items.length
@@ -1210,6 +1212,7 @@ function setupTabs() {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('view-' + btn.dataset.view).classList.add('active');
+      if (btn.dataset.view === 'stickers') fitStickerNames();
     });
   });
 }
@@ -1525,7 +1528,29 @@ function setupExpenses() {
   });
 }
 
+// تصغير خط اسم المنتج الطويل تدريجياً حتى يظهر كاملاً داخل الستيكر (سطرين كحد أقصى)
+function fitStickerNames() {
+  document.querySelectorAll('#stickerSheets .st-name').forEach(n => {
+    n.style.fontSize = '';
+    let scale = 1;
+    while (n.scrollHeight > n.clientHeight + 1 && scale > 0.6) {
+      scale -= 0.05;
+      n.style.fontSize = `calc(var(--st-name) * ${scale.toFixed(2)})`;
+    }
+  });
+}
+
+// التأكد من تحميل خط Cairo قبل الطباعة حتى لا تنطبع الستيكرات بخط بديل
+function loadStickerFonts() {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  const sample = 'السعر 0123456789';
+  return Promise.all(['400', '700', '900'].map(w => document.fonts.load(`${w} 16px Cairo`, sample)))
+    .then(() => document.fonts.ready)
+    .catch(() => {});
+}
+
 function setupStickers() {
+  loadStickerFonts().then(fitStickerNames);
   document.getElementById('st_logoFile').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) loadLogoFile(file);
@@ -1555,8 +1580,9 @@ function setupStickers() {
     persist();
     renderStickers();
   });
-  document.getElementById('st_printBtn').addEventListener('click', () => {
+  document.getElementById('st_printBtn').addEventListener('click', async () => {
     buildStickerSheets();
+    await loadStickerFonts();
     document.body.classList.add('print-stickers');
     window.print();
   });

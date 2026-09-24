@@ -22,8 +22,10 @@
     <button class="tab-btn" data-view="inventory">الجرد</button>
     <button class="tab-btn" data-view="sell">البيع</button>
     <button class="tab-btn" data-view="suppliers">الموردين</button>
+    <button class="tab-btn" data-view="expenses">المصاريف</button>
     <button class="tab-btn" data-view="reports">التقارير</button>
     <button class="tab-btn" data-view="print">الطباعة</button>
+    <button class="tab-btn" data-view="stickers">طباعة ستيكرات</button>
   </nav>
 
   <main id="main">
@@ -67,7 +69,39 @@
             <span>منتجات بدون سعر بيع: <b id="statNoPriceCount">0</b></span>
             <span>عدد الموردين: <b id="statSupplierCount">0</b></span>
             <span>مستحقات للموردين: <b id="statSupplierDebt">0</b> $</span>
+            <span>مصاريف اليوم: <b id="statTodayExpenses">0</b> ل.س</span>
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>💰 الصندوق</h2>
+        <p class="hint">رصيد الصندوق بكل عملة لحالها: بيزيد تلقائياً مع كل عملية بيع حسب العملة يلي دفع فيها الزبون، وبينقص مع المصاريف المدفوعة من الصندوق. استخدم "إيداع/سحب" لتسجيل الرصيد الافتتاحي أو أي مبلغ بتحطه أو بتسحبه يدوياً (مثلاً دفعة لمورد).</p>
+        <div class="stat-grid">
+          <div class="stat-box cash-box"><div class="stat-label">بالليرة السورية</div><div class="stat-value" id="box_SYP">0</div></div>
+          <div class="stat-box cash-box"><div class="stat-label">بالدولار $</div><div class="stat-value" id="box_USD">0</div></div>
+        </div>
+        <div class="stat-sub" id="box_equiv"></div>
+
+        <h3>إيداع / سحب يدوي</h3>
+        <form id="cashMoveForm" class="row">
+          <select id="cm_type">
+            <option value="in">إيداع (إضافة للصندوق)</option>
+            <option value="out">سحب (من الصندوق)</option>
+          </select>
+          <input type="number" id="cm_amount" min="0" step="any" required placeholder="المبلغ">
+          <select id="cm_currency">
+            <option value="SYP">ليرة سورية</option>
+            <option value="USD">دولار</option>
+          </select>
+          <input type="text" id="cm_note" placeholder="ملاحظة (مثال: رصيد افتتاحي)">
+          <button type="submit" class="btn primary small">تسجيل</button>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
+            <tbody id="cashMovesTbody"></tbody>
+          </table>
         </div>
       </div>
 
@@ -204,16 +238,27 @@
             </label>
             <div id="s_productInfo" class="product-info"></div>
 
+            <div class="field-title">الزبون بأي عملة حاسب؟</div>
+            <div class="mode-toggle" id="s_currencyToggle">
+              <button type="button" class="mode-btn active" data-currency="SYP">ليرة سورية</button>
+              <button type="button" class="mode-btn" data-currency="USD">دولار $</button>
+            </div>
+
             <div class="mode-toggle" id="s_modeToggle">
               <button type="button" class="mode-btn active" data-mode="qty">حسب الكمية</button>
-              <button type="button" class="mode-btn" data-mode="amount">حسب المبلغ (ل.س)</button>
+              <button type="button" class="mode-btn" data-mode="amount">حسب المبلغ</button>
             </div>
 
             <label id="s_qtyLabel">الكمية المباعة <span id="s_qtyUnitLabel">(غرام)</span>
               <input type="number" id="s_qty" min="0" step="any" placeholder="مثال: 300">
             </label>
-            <label id="s_amountLabel" class="hidden">المبلغ المستلم (ليرة سورية)
+            <label id="s_amountLabel" class="hidden">المبلغ المستلم <span class="s-currency-label">(ليرة سورية)</span>
               <input type="number" id="s_amount" min="0" step="any" placeholder="مثال: 1000">
+            </label>
+
+            <label class="checkbox-label custom-price-toggle"><input type="checkbox" id="s_customOn"> بيع بسعر مغاير (سعر متفق عليه مع الزبون)</label>
+            <label id="s_customLabel" class="hidden">السعر الإجمالي يلي حسبته للزبون <span class="s-currency-label">(ليرة سورية)</span>
+              <input type="number" id="s_customPrice" min="0" step="any" placeholder="المبلغ يلي اتفقتوا عليه">
             </label>
 
             <label>اسم الزبون <small>(اختياري)</small>
@@ -233,7 +278,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ ل.س</th><th>الربح ل.س</th><th>الزبون</th><th></th></tr>
+                <tr><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ المقبوض</th><th>الربح ل.س</th><th>الزبون</th><th></th></tr>
               </thead>
               <tbody id="todaySalesTbody"></tbody>
             </table>
@@ -334,6 +379,65 @@
       </div>
     </section>
 
+    <!-- ==================== Expenses ==================== -->
+    <section id="view-expenses" class="view">
+      <div class="grid-2">
+        <div class="card">
+          <h2>تسجيل مصروف</h2>
+          <form id="expenseForm" class="form-grid">
+            <label>البند
+              <input type="text" id="ex_title" list="ex_titles" required placeholder="مثال: كهرباء، أجار، أكياس، مواصلات">
+              <datalist id="ex_titles"></datalist>
+            </label>
+            <label>التاريخ
+              <input type="date" id="ex_date" required>
+            </label>
+            <label>المبلغ
+              <input type="number" id="ex_amount" min="0" step="any" required placeholder="0">
+            </label>
+            <label>العملة
+              <select id="ex_currency">
+                <option value="SYP">ليرة سورية</option>
+                <option value="USD">دولار</option>
+              </select>
+            </label>
+            <label class="full-row">التفاصيل <small>(اختياري)</small>
+              <textarea id="ex_details" rows="3" placeholder="اكتب تفاصيل المصروف..."></textarea>
+            </label>
+            <label class="checkbox-label full-row"><input type="checkbox" id="ex_fromBox" checked> مدفوع من الصندوق (ينخصم من رصيد الصندوق)</label>
+            <div class="form-actions">
+              <button type="submit" class="btn primary">تسجيل المصروف</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>ملخص المصاريف</h2>
+          <div class="row">
+            <input type="text" id="exSearch" placeholder="بحث بالبند أو التفاصيل...">
+            <label>من <input type="date" id="exFrom"></label>
+            <label>إلى <input type="date" id="exTo"></label>
+            <button type="button" class="btn" id="exClear">عرض الكل</button>
+          </div>
+          <div class="stat-grid" style="margin-top:12px">
+            <div class="stat-box debt"><div class="stat-label">مصاريف بالليرة</div><div class="stat-value" id="ex_totalSYP">0</div></div>
+            <div class="stat-box debt"><div class="stat-label">مصاريف بالدولار</div><div class="stat-value" id="ex_totalUSD">0</div></div>
+          </div>
+          <div class="stat-sub" id="ex_totalEquiv"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>سجل المصاريف</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>التاريخ</th><th>البند</th><th>التفاصيل</th><th>المبلغ</th><th>من الصندوق</th><th></th></tr></thead>
+            <tbody id="expensesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== Reports ==================== -->
     <section id="view-reports" class="view">
       <div class="card">
@@ -347,7 +451,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>التاريخ</th><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ ل.س</th><th>الربح ل.س</th><th>الزبون</th></tr></thead>
+            <thead><tr><th>التاريخ</th><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ المقبوض</th><th>الربح ل.س</th><th>الزبون</th></tr></thead>
             <tbody id="saleSearchTbody"></tbody>
           </table>
         </div>
@@ -365,10 +469,12 @@
           <div class="stat-box"><div class="stat-label">عدد عمليات البيع</div><div class="stat-value" id="rep_count">0</div></div>
           <div class="stat-box"><div class="stat-label">إجمالي المبيعات ل.س</div><div class="stat-value" id="rep_revenue">0</div></div>
           <div class="stat-box profit"><div class="stat-label">إجمالي الربح ل.س</div><div class="stat-value" id="rep_profit">0</div></div>
+          <div class="stat-box debt"><div class="stat-label">المصاريف ل.س</div><div class="stat-value" id="rep_expenses">0</div></div>
+          <div class="stat-box profit"><div class="stat-label">صافي الربح (بعد المصاريف) ل.س</div><div class="stat-value" id="rep_net">0</div></div>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ ل.س</th><th>الربح ل.س</th><th>الزبون</th></tr></thead>
+            <thead><tr><th>الوقت</th><th>المنتج</th><th>الكمية</th><th>المبلغ المقبوض</th><th>الربح ل.س</th><th>الزبون</th></tr></thead>
             <tbody id="rep_dailyTbody"></tbody>
           </table>
         </div>
@@ -378,13 +484,15 @@
         <h2>تقرير أسبوعي (آخر 7 أيام من اليوم المختار)</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>اليوم</th><th>عدد العمليات</th><th>المبيعات ل.س</th><th>الربح ل.س</th></tr></thead>
+            <thead><tr><th>اليوم</th><th>عدد العمليات</th><th>المبيعات ل.س</th><th>الربح ل.س</th><th>المصاريف ل.س</th><th>صافي الربح ل.س</th></tr></thead>
             <tbody id="rep_weeklyTbody"></tbody>
           </table>
         </div>
         <div class="stat-grid">
           <div class="stat-box"><div class="stat-label">إجمالي مبيعات الأسبوع</div><div class="stat-value" id="rep_weekRevenue">0</div></div>
           <div class="stat-box profit"><div class="stat-label">إجمالي ربح الأسبوع</div><div class="stat-value" id="rep_weekProfit">0</div></div>
+          <div class="stat-box debt"><div class="stat-label">مصاريف الأسبوع</div><div class="stat-value" id="rep_weekExpenses">0</div></div>
+          <div class="stat-box profit"><div class="stat-label">صافي ربح الأسبوع</div><div class="stat-value" id="rep_weekNet">0</div></div>
         </div>
       </div>
     </section>
@@ -433,6 +541,104 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ==================== Stickers ==================== -->
+    <section id="view-stickers" class="view">
+      <div class="card no-print">
+        <h2>طباعة ستيكرات الأسعار</h2>
+        <p class="hint">كل ستيكر فيه: اللوغو، اسم المنتج، والسعر لكل 100 غرام بالليرة السورية الجديدة (بعد حذف صفرين، ورقم صحيح بدون فواصل — الكسور بتنجبر لفوق، مثلاً 424.3 بتصير 425). المنتجات يلي بتنباع بالحبة بينطبع عليها سعر الحبة.</p>
+        <div class="form-grid">
+          <label>اللوغو
+            <input type="file" id="st_logoFile" accept="image/*">
+          </label>
+          <div class="logo-box">
+            <img id="st_logoPreview" class="hidden" alt="اللوغو">
+            <span id="st_noLogo" class="hint">لم يتم اختيار لوغو بعد</span>
+            <button type="button" class="btn small danger hidden" id="st_logoRemove">إزالة اللوغو</button>
+          </div>
+          <label>عدد الستيكرات بورقة الـ A4
+            <select id="st_layout">
+              <option value="4x6">24 ستيكر (4 × 6) — حجم كبير</option>
+              <option value="4x7">28 ستيكر (4 × 7)</option>
+              <option value="5x8">40 ستيكر (5 × 8) — حجم صغير</option>
+            </select>
+          </label>
+          <label>عدد النسخ من كل منتج
+            <input type="number" id="st_copies" min="1" step="1" value="1">
+          </label>
+          <label>التصنيف
+            <select id="st_category"><option value="">كل التصنيفات</option></select>
+          </label>
+        </div>
+
+        <details class="design-panel" id="st_designPanel" open>
+          <summary>🎨 تعديل التصميم (بتشوف التغيير مباشرة)</summary>
+          <div class="design-layout">
+            <div class="design-controls">
+              <div class="design-group">
+                <h4>اللوغو</h4>
+                <label class="range-label">حجم اللوغو <output data-for="logoScale"></output>
+                  <input type="range" data-key="logoScale" min="0.5" max="3" step="0.05"></label>
+                <label class="range-label">المسافة تحت اللوغو <output data-for="logoGap"></output>
+                  <input type="range" data-key="logoGap" min="-3" max="8" step="0.1"></label>
+                <label class="checkbox-label"><input type="checkbox" data-key="logoBadge"> خلفية فاتحة ورا اللوغو</label>
+              </div>
+              <div class="design-group">
+                <h4>الكتابة</h4>
+                <label class="range-label">حجم اسم المنتج <output data-for="nameScale"></output>
+                  <input type="range" data-key="nameScale" min="0.5" max="2" step="0.05"></label>
+                <label class="range-label">حجم السعر <output data-for="priceScale"></output>
+                  <input type="range" data-key="priceScale" min="0.5" max="2" step="0.05"></label>
+                <label class="range-label">حجم الكلام الصغير <output data-for="smallScale"></output>
+                  <input type="range" data-key="smallScale" min="0.5" max="2" step="0.05"></label>
+                <label class="range-label">المسافة بين الأسطر <output data-for="lineGap"></output>
+                  <input type="range" data-key="lineGap" min="0" max="6" step="0.1"></label>
+              </div>
+              <div class="design-group">
+                <h4>المكان</h4>
+                <label class="range-label">نزّل / طلّع المحتوى كلو <output data-for="offsetY"></output>
+                  <input type="range" data-key="offsetY" min="-15" max="15" step="0.25"></label>
+                <label class="range-label">نزّل / طلّع الكلام بس (بدون اللوغو) <output data-for="textOffsetY"></output>
+                  <input type="range" data-key="textOffsetY" min="-10" max="10" step="0.25"></label>
+              </div>
+              <div class="design-group">
+                <h4>الألوان والزخرفة</h4>
+                <div class="color-row">
+                  <label>الخلفية <input type="color" data-key="bg"></label>
+                  <label>الخط <input type="color" data-key="fg"></label>
+                  <label>الذهبي <input type="color" data-key="accent"></label>
+                </div>
+                <label class="checkbox-label"><input type="checkbox" data-key="frame"> إطار داخلي</label>
+                <label class="checkbox-label"><input type="checkbox" data-key="divider"> خط زخرفة تحت الاسم</label>
+                <label class="checkbox-label"><input type="checkbox" data-key="leaf"> ورقة شفافة بالزاوية</label>
+              </div>
+              <button type="button" class="btn small" id="st_designReset">↺ رجوع للتصميم الأصلي</button>
+            </div>
+            <div class="design-preview">
+              <div class="hint">معاينة بالحجم الحقيقي:</div>
+              <div id="st_livePreview"></div>
+              <div id="st_overflowWarn" class="overflow-warn hidden">⚠️ الكلام طالع برّا حدود الستيكر عند بعض المنتجات — صغّر اللوغو أو الخط، أو حرّك المحتوى.</div>
+            </div>
+          </div>
+        </details>
+
+        <div class="card-header-row" style="margin-top:14px">
+          <h3>المنتجات يلي رح تنطبع</h3>
+          <div class="row">
+            <button type="button" class="btn small" id="st_all">تحديد الكل</button>
+            <button type="button" class="btn small" id="st_none">إلغاء الكل</button>
+          </div>
+        </div>
+        <div class="sticker-checklist" id="st_list"></div>
+
+        <div class="form-actions row">
+          <button class="btn primary" id="st_printBtn">🖨️ طباعة الستيكرات</button>
+          <span id="st_summary" class="hint" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sticker-sheets" id="stickerSheets"></div>
     </section>
 
   </main>

@@ -6,15 +6,28 @@
 
 const STORAGE_KEY = 'spiceShopAccountingData_v1';
 
-let state = { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [], categories: [] };
+let state = defaultState();
 let currentSupplierId = null;
 let editingProductId = null;
 let sellMode = 'qty';
+let sellCurrency = 'SYP';
 let purchaseItemsDraft = [];
 
 /* ---------------- Persistence (localStorage) ---------------- */
 
-function defaultState() { return { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [], categories: [] }; }
+function defaultState() { return { meta: {}, exchangeRates: [], products: [], suppliers: [], sales: [], categories: [], expenses: [], cashMovements: [] }; }
+
+// يضمن وجود كل الحقول (للبيانات القديمة أو النسخ الاحتياطية المستوردة من إصدار أقدم)
+function normalizeState() {
+  state.meta = state.meta || {};
+  state.exchangeRates = state.exchangeRates || [];
+  state.products = state.products || [];
+  state.suppliers = state.suppliers || [];
+  state.sales = state.sales || [];
+  state.categories = state.categories || [];
+  state.expenses = state.expenses || [];
+  state.cashMovements = state.cashMovements || [];
+}
 
 function loadState() {
   try {
@@ -23,11 +36,7 @@ function loadState() {
   } catch (e) {
     state = defaultState();
   }
-  state.exchangeRates = state.exchangeRates || [];
-  state.products = state.products || [];
-  state.suppliers = state.suppliers || [];
-  state.sales = state.sales || [];
-  state.categories = state.categories || [];
+  normalizeState();
 }
 
 // يكتب البيانات فوراً على القرص (localStorage) بدون إعادة رسم الواجهة،
@@ -73,11 +82,7 @@ function importBackup(file) {
       if (typeof parsed !== 'object' || parsed === null) throw new Error('invalid');
       if (!confirm('سيتم استبدال كل البيانات الحالية بالنسخة المستوردة. متابعة؟')) return;
       state = parsed;
-      state.exchangeRates = state.exchangeRates || [];
-      state.products = state.products || [];
-      state.suppliers = state.suppliers || [];
-      state.sales = state.sales || [];
-      state.categories = state.categories || [];
+      normalizeState();
       save();
       alert('تم استيراد النسخة الاحتياطية بنجاح');
     } catch (e) {
@@ -107,6 +112,10 @@ function addDays(dateStr, n) {
 function fmt(n, decimals = 0) {
   if (n == null || isNaN(n)) return '0';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function currencyLabel(currency) { return currency === 'USD' ? '$' : 'ل.س'; }
+function fmtMoney(amount, currency) {
+  return currency === 'USD' ? fmt(amount, 2) + ' $' : fmt(amount, 0) + ' ل.س';
 }
 function el(html) {
   const t = document.createElement('template');
@@ -255,24 +264,40 @@ function supplierBalance(sup) {
 
 /* ---------------- Sales / profit calc ---------------- */
 
-function computeSalePreview(product, mode, value) {
+// currency: العملة يلي دفع فيها الزبون (SYP أو USD)
+// customTotal: سعر مغاير متفق عليه (إجمالي، بعملة الدفع) — أو null للبيع بالسعر العادي
+function computeSalePreview(product, mode, value, currency = 'SYP', customTotal = null) {
   const rate = getCurrentRate();
   if (!rate) return { error: 'لم يتم إدخال سعر صرف الدولار بعد. الرجاء إدخاله من لوحة التحكم أولاً.' };
-  if (product.sellPriceUSD == null) return { error: 'لم يتم تحديد سعر بيع لهذا المنتج بعد. حدده من صفحة المنتجات.' };
+  const isCustom = customTotal != null;
+  if (product.sellPriceUSD == null && !isCustom) return { error: 'لم يتم تحديد سعر بيع لهذا المنتج بعد. حدده من صفحة المنتجات، أو استخدم "بيع بسعر مغاير".' };
   if (!value || value <= 0) return null;
+  if (isCustom && !(customTotal > 0)) return null;
 
-  const sellPricePerBaseUSD = product.sellPriceUSD / baseUnitFactor(product.unit); // per gram or per piece
+  const toSYP = amount => currency === 'USD' ? amount * rate : amount;
+  const sellPricePerBaseSYP = product.sellPriceUSD != null ? (product.sellPriceUSD / baseUnitFactor(product.unit)) * rate : null; // per gram or per piece
   const purchasePricePerBaseUSD = product.purchasePriceUSD / baseUnitFactor(product.unit);
-  const sellPricePerBaseSYP = sellPricePerBaseUSD * rate;
 
-  let qty, revenueSYP;
+  let qty;
   if (mode === 'qty') {
     qty = value;
-    revenueSYP = qty * sellPricePerBaseSYP;
   } else {
-    revenueSYP = value;
-    if (sellPricePerBaseSYP <= 0) return { error: 'سعر البيع غير صالح.' };
-    qty = value / sellPricePerBaseSYP;
+    if (!(sellPricePerBaseSYP > 0)) return { error: 'سعر البيع غير صالح.' };
+    qty = toSYP(value) / sellPricePerBaseSYP;
+  }
+
+  // السعر العادي حسب قائمة الأسعار (للمقارنة مع السعر المغاير)
+  const listRevenueSYP = sellPricePerBaseSYP != null ? qty * sellPricePerBaseSYP : null;
+  let revenueSYP, paidAmount;
+  if (isCustom) {
+    paidAmount = customTotal;
+    revenueSYP = toSYP(customTotal);
+  } else if (mode === 'amount') {
+    paidAmount = value;
+    revenueSYP = toSYP(value);
+  } else {
+    revenueSYP = listRevenueSYP;
+    paidAmount = currency === 'USD' ? revenueSYP / rate : revenueSYP;
   }
 
   const costUSD = qty * purchasePricePerBaseUSD;
@@ -283,11 +308,11 @@ function computeSalePreview(product, mode, value) {
     return { error: `الكمية المتوفرة غير كافية (المتوفر: ${stockDisplay(product)})` };
   }
 
-  return { qty, revenueSYP, costSYP, profitSYP, rate };
+  return { qty, revenueSYP, listRevenueSYP, paidAmount, currency, isCustom, costSYP, profitSYP, rate };
 }
 
-function recordSale(product, mode, value, customer) {
-  const preview = computeSalePreview(product, mode, value);
+function recordSale(product, mode, value, customer, currency, customTotal) {
+  const preview = computeSalePreview(product, mode, value, currency, customTotal);
   if (!preview || preview.error) return preview;
 
   state.sales.push({
@@ -302,6 +327,10 @@ function recordSale(product, mode, value, customer) {
     costSYP: preview.costSYP,
     profitSYP: preview.profitSYP,
     rateUsed: preview.rate,
+    currency: preview.currency,
+    paidAmount: preview.paidAmount,
+    customPrice: preview.isCustom,
+    listRevenueSYP: preview.listRevenueSYP,
     customer: customer || ''
   });
   product.stock -= preview.qty;
@@ -319,6 +348,65 @@ function deleteSale(id) {
   save();
 }
 
+/* ---------------- Cash box (الصندوق) ---------------- */
+
+// المبيعات القديمة (قبل إضافة خيار العملة) تُعتبر مدفوعة بالليرة
+function saleCurrency(s) { return s.currency || 'SYP'; }
+function salePaidAmount(s) { return s.paidAmount != null ? s.paidAmount : s.revenueSYP; }
+
+function saleAmountCell(s) {
+  let html = fmtMoney(salePaidAmount(s), saleCurrency(s));
+  if (s.customPrice) {
+    const orig = s.listRevenueSYP != null ? ` (السعر العادي: ${fmt(s.listRevenueSYP)} ل.س)` : '';
+    html += ` <span class="badge partial" title="بيع بسعر مغاير${orig}">سعر مغاير</span>`;
+  }
+  return html;
+}
+
+function cashBoxBalance() {
+  const bal = { SYP: 0, USD: 0 };
+  state.sales.forEach(s => { bal[saleCurrency(s)] += salePaidAmount(s); });
+  state.cashMovements.forEach(m => { bal[m.currency] += m.type === 'in' ? m.amount : -m.amount; });
+  state.expenses.forEach(e => { if (e.fromBox) bal[e.currency] -= e.amount; });
+  return bal;
+}
+
+function addCashMovement(data) {
+  state.cashMovements.push({ id: uid(), date: todayStr(), time: timeStr(), ...data });
+  save();
+}
+function deleteCashMovement(id) {
+  if (!confirm('حذف هذه الحركة من الصندوق؟')) return;
+  state.cashMovements = state.cashMovements.filter(m => m.id !== id);
+  save();
+}
+
+/* ---------------- Expenses (المصاريف) ---------------- */
+
+function addExpense(data) {
+  state.expenses.push({
+    id: uid(),
+    time: timeStr(),
+    rateUsed: getRateForDate(data.date),
+    createdAt: new Date().toISOString(),
+    ...data
+  });
+  save();
+}
+function deleteExpense(id) {
+  if (!confirm('حذف هذا المصروف؟')) return;
+  state.expenses = state.expenses.filter(e => e.id !== id);
+  save();
+}
+// قيمة المصروف بالليرة (المصاريف بالدولار تتحول حسب سعر الصرف بيوم المصروف)
+function expenseSYP(e) {
+  if (e.currency !== 'USD') return e.amount;
+  return e.amount * (e.rateUsed || getRateForDate(e.date) || 0);
+}
+function expensesSYPForDate(dateStr) {
+  return state.expenses.filter(e => e.date === dateStr).reduce((a, e) => a + expenseSYP(e), 0);
+}
+
 /* ---------------- Rendering: shared ---------------- */
 
 function renderAll() {
@@ -328,8 +416,10 @@ function renderAll() {
   renderInventory();
   renderSell();
   renderSuppliers();
+  renderExpenses();
   renderReports();
   renderPrintOptions();
+  renderStickers();
 }
 
 function renderCategories() {
@@ -419,6 +509,31 @@ function renderDashboard() {
   document.getElementById('statSupplierCount').textContent = state.suppliers.length;
   const totalDebt = state.suppliers.reduce((acc, s) => acc + supplierBalance(s).balance, 0);
   document.getElementById('statSupplierDebt').textContent = fmt(totalDebt, 2);
+  document.getElementById('statTodayExpenses').textContent = fmt(expensesSYPForDate(today));
+
+  renderCashBox();
+}
+
+function renderCashBox() {
+  const rate = getCurrentRate();
+  const bal = cashBoxBalance();
+  document.getElementById('box_SYP').textContent = fmt(bal.SYP) + ' ل.س';
+  document.getElementById('box_USD').textContent = fmt(bal.USD, 2) + ' $';
+  document.getElementById('box_equiv').innerHTML = rate
+    ? `<span>المجموع الكلي بما يعادل (حسب سعر اليوم): <b>${fmt(bal.SYP + bal.USD * rate)} ل.س</b> — أو <b>${fmt(bal.USD + bal.SYP / rate, 2)} $</b></span>`
+    : '';
+
+  const tbody = document.getElementById('cashMovesTbody');
+  const moves = state.cashMovements.slice().sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 20);
+  tbody.innerHTML = moves.length ? moves.map(m => `
+    <tr>
+      <td>${m.date} ${m.time || ''}</td>
+      <td>${m.type === 'in' ? '<span class="badge cash">إيداع</span>' : '<span class="badge credit">سحب</span>'}</td>
+      <td>${fmtMoney(m.amount, m.currency)}</td>
+      <td>${escapeHtml(m.note || '—')}</td>
+      <td><button class="link-btn del-cash-btn" data-id="${m.id}">حذف</button></td>
+    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">لا يوجد حركات يدوية بعد</td></tr>';
+  tbody.querySelectorAll('.del-cash-btn').forEach(btn => btn.addEventListener('click', () => deleteCashMovement(btn.dataset.id)));
 }
 function sum(arr, field) { return arr.reduce((a, x) => a + (x[field] || 0), 0); }
 
@@ -526,7 +641,7 @@ function renderSell() {
         <td>${s.time}</td>
         <td>${escapeHtml(s.productName)}</td>
         <td>${qtyLabel}</td>
-        <td>${fmt(s.revenueSYP)}</td>
+        <td>${saleAmountCell(s)}</td>
         <td>${fmt(s.profitSYP)}</td>
         <td>${escapeHtml(s.customer || '—')}</td>
         <td><button class="link-btn del-sale-btn" data-id="${s.id}">حذف</button></td>
@@ -535,9 +650,12 @@ function renderSell() {
   });
   tbody.querySelectorAll('.del-sale-btn').forEach(btn => btn.addEventListener('click', () => deleteSale(btn.dataset.id)));
 
+  const paidSYP = todaySales.filter(s => saleCurrency(s) === 'SYP').reduce((a, s) => a + salePaidAmount(s), 0);
+  const paidUSD = todaySales.filter(s => saleCurrency(s) === 'USD').reduce((a, s) => a + salePaidAmount(s), 0);
   document.getElementById('todaySalesTotals').innerHTML =
     `<span>إجمالي مبيعات اليوم: ${fmt(sum(todaySales, 'revenueSYP'))} ل.س</span>
-     <span>إجمالي الربح: ${fmt(sum(todaySales, 'profitSYP'))} ل.س</span>`;
+     <span>إجمالي الربح: ${fmt(sum(todaySales, 'profitSYP'))} ل.س</span>
+     <span>المقبوض: ${fmt(paidSYP)} ل.س + ${fmt(paidUSD, 2)} $</span>`;
 
   updateSalePreview();
 }
@@ -578,7 +696,7 @@ function updateSalePreview() {
     ? parseFloat(document.getElementById('s_qty').value)
     : parseFloat(document.getElementById('s_amount').value);
 
-  const result = computeSalePreview(product, sellMode, value);
+  const result = computeSalePreview(product, sellMode, value, sellCurrency, currentCustomTotal());
   if (!result) {
     previewEl.className = 'preview-box';
     previewEl.innerHTML = '';
@@ -592,11 +710,20 @@ function updateSalePreview() {
     return;
   }
   const qtyLabel = product.unit === 'kg' ? fmt(result.qty, 1) + ' غرام' : fmt(result.qty, 2) + ' حبة';
+  const equiv = result.currency === 'USD' ? ` <small>(≈ ${fmt(result.revenueSYP)} ل.س)</small>` : '';
+  let customNote = '';
+  if (result.isCustom && result.listRevenueSYP != null) {
+    const diff = result.listRevenueSYP - result.revenueSYP;
+    const listInCurrency = result.currency === 'USD' ? result.listRevenueSYP / result.rate : result.listRevenueSYP;
+    customNote = `<br>السعر العادي: <b>${fmtMoney(listInCurrency, result.currency)}</b> — ` +
+      (diff >= 0 ? `الخصم: <b>${fmt(diff)} ل.س</b>` : `زيادة: <b>${fmt(-diff)} ل.س</b>`);
+  }
   previewEl.className = 'preview-box visible';
   previewEl.innerHTML = `
     الكمية: <b>${qtyLabel}</b> —
-    المبلغ: <b>${fmt(result.revenueSYP)} ل.س</b> —
-    الربح المتوقع: <b>${fmt(result.profitSYP)} ل.س</b>
+    المبلغ المقبوض: <b>${fmtMoney(result.paidAmount, result.currency)}</b>${equiv} —
+    الربح المتوقع: <b class="${result.profitSYP < 0 ? 'warn' : ''}">${fmt(result.profitSYP)} ل.س</b>
+    ${customNote}
   `;
   confirmBtn.disabled = false;
 }
@@ -799,7 +926,7 @@ function renderSaleSearch() {
     const qtyLabel = s.unit === 'kg' ? fmt(s.qty, 1) + ' غ' : fmt(s.qty, 0) + ' حبة';
     return `<tr>
       <td>${s.date}</td><td>${s.time}</td><td>${escapeHtml(s.productName)}</td><td>${qtyLabel}</td>
-      <td>${fmt(s.revenueSYP)}</td><td>${fmt(s.profitSYP)}</td><td>${escapeHtml(s.customer || '—')}</td>
+      <td>${saleAmountCell(s)}</td><td>${fmt(s.profitSYP)}</td><td>${escapeHtml(s.customer || '—')}</td>
     </tr>`;
   }).join('');
 
@@ -819,6 +946,9 @@ function renderReports() {
   document.getElementById('rep_count').textContent = daySales.length;
   document.getElementById('rep_revenue').textContent = fmt(sum(daySales, 'revenueSYP'));
   document.getElementById('rep_profit').textContent = fmt(sum(daySales, 'profitSYP'));
+  const dayExpenses = expensesSYPForDate(day);
+  document.getElementById('rep_expenses').textContent = fmt(dayExpenses);
+  document.getElementById('rep_net').textContent = fmt(sum(daySales, 'profitSYP') - dayExpenses);
 
   const tbody = document.getElementById('rep_dailyTbody');
   tbody.innerHTML = '';
@@ -827,27 +957,31 @@ function renderReports() {
     tbody.appendChild(el(`
       <tr>
         <td>${s.time}</td><td>${escapeHtml(s.productName)}</td><td>${qtyLabel}</td>
-        <td>${fmt(s.revenueSYP)}</td><td>${fmt(s.profitSYP)}</td><td>${escapeHtml(s.customer || '—')}</td>
+        <td>${saleAmountCell(s)}</td><td>${fmt(s.profitSYP)}</td><td>${escapeHtml(s.customer || '—')}</td>
       </tr>
     `));
   });
 
   const weekTbody = document.getElementById('rep_weeklyTbody');
   weekTbody.innerHTML = '';
-  let weekRevenue = 0, weekProfit = 0;
+  let weekRevenue = 0, weekProfit = 0, weekExpenses = 0;
   for (let i = 6; i >= 0; i--) {
     const d = addDays(day, -i);
     const daySalesX = state.sales.filter(s => s.date === d);
     const rev = sum(daySalesX, 'revenueSYP');
     const prof = sum(daySalesX, 'profitSYP');
+    const exp = expensesSYPForDate(d);
     weekRevenue += rev;
     weekProfit += prof;
+    weekExpenses += exp;
     weekTbody.appendChild(el(`
-      <tr><td>${d}</td><td>${daySalesX.length}</td><td>${fmt(rev)}</td><td>${fmt(prof)}</td></tr>
+      <tr><td>${d}</td><td>${daySalesX.length}</td><td>${fmt(rev)}</td><td>${fmt(prof)}</td><td>${fmt(exp)}</td><td>${fmt(prof - exp)}</td></tr>
     `));
   }
   document.getElementById('rep_weekRevenue').textContent = fmt(weekRevenue);
   document.getElementById('rep_weekProfit').textContent = fmt(weekProfit);
+  document.getElementById('rep_weekExpenses').textContent = fmt(weekExpenses);
+  document.getElementById('rep_weekNet').textContent = fmt(weekProfit - weekExpenses);
 }
 
 /* ---------------- Print ---------------- */
@@ -905,6 +1039,249 @@ function buildPrintPreview() {
   }).join('');
 }
 
+/* ---------------- Expenses view ---------------- */
+
+function renderExpenses() {
+  const q = (document.getElementById('exSearch').value || '').trim().toLowerCase();
+  const from = document.getElementById('exFrom').value;
+  const to = document.getElementById('exTo').value;
+  const rate = getCurrentRate();
+
+  const list = state.expenses
+    .filter(e => {
+      if (from && e.date < from) return false;
+      if (to && e.date > to) return false;
+      if (q && !((e.title || '').toLowerCase().includes(q) || (e.details || '').toLowerCase().includes(q))) return false;
+      return true;
+    })
+    .sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
+
+  const tbody = document.getElementById('expensesTbody');
+  tbody.innerHTML = list.length ? list.map(e => `
+    <tr>
+      <td>${e.date}</td>
+      <td>${escapeHtml(e.title)}</td>
+      <td class="pre-wrap">${escapeHtml(e.details || '—')}</td>
+      <td>${fmtMoney(e.amount, e.currency)}</td>
+      <td>${e.fromBox ? 'نعم' : 'لا'}</td>
+      <td><button class="link-btn del-expense-btn" data-id="${e.id}">حذف</button></td>
+    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">لا يوجد مصاريف</td></tr>';
+  tbody.querySelectorAll('.del-expense-btn').forEach(btn => btn.addEventListener('click', () => deleteExpense(btn.dataset.id)));
+
+  const totalSYP = list.filter(e => e.currency !== 'USD').reduce((a, e) => a + e.amount, 0);
+  const totalUSD = list.filter(e => e.currency === 'USD').reduce((a, e) => a + e.amount, 0);
+  document.getElementById('ex_totalSYP').textContent = fmt(totalSYP);
+  document.getElementById('ex_totalUSD').textContent = fmt(totalUSD, 2);
+  const equiv = list.reduce((a, e) => a + expenseSYP(e), 0);
+  document.getElementById('ex_totalEquiv').innerHTML =
+    `<span>عدد المصاريف: <b>${list.length}</b></span><span>المجموع الكلي بالليرة: <b>${fmt(equiv)} ل.س</b></span>` +
+    (rate ? `<span>≈ <b>${fmt(equiv / rate, 2)} $</b></span>` : '');
+
+  // اقتراحات البنود من المصاريف السابقة
+  const titles = [...new Set(state.expenses.map(e => e.title).filter(Boolean))];
+  document.getElementById('ex_titles').innerHTML = titles.map(t => `<option value="${escapeHtml(t)}">`).join('');
+}
+
+/* ---------------- Stickers (ستيكرات الأسعار) ---------------- */
+
+const STICKER_LAYOUTS = { '4x6': [4, 6], '4x7': [4, 7], '5x8': [5, 8] };
+
+// السعر على الستيكر: بالليرة الجديدة (بعد حذف صفرين) لكل 100 غرام (أو للحبة)،
+// كرقم صحيح بدون فواصل: الكسور بتنجبر لفوق لأقرب رقم صحيح (424.3 ← 425)
+function stickerPrice(p, rate) {
+  if (p.sellPriceUSD == null || !rate) return null;
+  const syp = p.unit === 'kg' ? p.sellPriceUSD * rate / 10 : p.sellPriceUSD * rate;
+  const shortened = Math.round((syp / 100) * 1e6) / 1e6; // إزالة أخطاء الفاصلة العائمة قبل الجبر
+  return Math.ceil(shortened);
+}
+
+/* ---- تعديل تصميم الستيكر ---- */
+const STICKER_DESIGN_DEFAULTS = {
+  logoScale: 1, logoGap: 0.4, logoBadge: true,
+  nameScale: 1, priceScale: 1, smallScale: 1, lineGap: 0.3,
+  offsetY: 0, textOffsetY: 0,
+  bg: '#174a2b', fg: '#ffffff', accent: '#e3c77d',
+  frame: true, divider: true, leaf: true
+};
+const STICKER_DESIGN_MM_KEYS = ['logoGap', 'lineGap', 'offsetY', 'textOffsetY'];
+
+function stickerDesign() {
+  return { ...STICKER_DESIGN_DEFAULTS, ...(state.meta.stickerDesign || {}) };
+}
+
+function designValueLabel(key, v) {
+  if (STICKER_DESIGN_MM_KEYS.includes(key)) {
+    if (key === 'offsetY' || key === 'textOffsetY') {
+      if (Math.abs(v) < 0.01) return 'بالنص';
+      return `${Math.abs(v)} مم ${v > 0 ? 'لتحت' : 'لفوق'}`;
+    }
+    return `${v} مم`;
+  }
+  return Math.round(v * 100) + '%';
+}
+
+// تطبيق التصميم كمتغيرات CSS على تبويبة الستيكرات (المعاينة والصفحات بيتغيروا فوراً)
+function applyStickerDesign() {
+  const d = stickerDesign();
+  const root = document.getElementById('view-stickers');
+  const set = (k, v) => root.style.setProperty(k, v);
+  set('--st-bg', d.bg);
+  set('--st-fg', d.fg);
+  set('--st-gold', d.accent);
+  set('--st-logo-scale', d.logoScale);
+  set('--st-logo-gap', d.logoGap + 'mm');
+  set('--st-name-scale', d.nameScale);
+  set('--st-price-scale', d.priceScale);
+  set('--st-small-scale', d.smallScale);
+  set('--st-line-gap', d.lineGap + 'mm');
+  set('--st-offset', d.offsetY + 'mm');
+  set('--st-text-offset', d.textOffsetY + 'mm');
+  set('--st-frame', d.frame ? 'block' : 'none');
+  set('--st-divider', d.divider ? 'block' : 'none');
+  set('--st-leaf', d.leaf ? 'block' : 'none');
+  set('--st-badge-bg', d.logoBadge ? '#fbf6ea' : 'transparent');
+  set('--st-badge-pad', d.logoBadge ? '0.8mm 3mm' : '0');
+  set('--st-badge-shadow', d.logoBadge ? '0 0.4mm 1.2mm rgba(0,0,0,0.25)' : 'none');
+
+  document.querySelectorAll('#st_designPanel [data-key]').forEach(input => {
+    const v = d[input.dataset.key];
+    if (input.type === 'checkbox') input.checked = !!v;
+    else if (document.activeElement !== input) input.value = v;
+  });
+  document.querySelectorAll('#st_designPanel output[data-for]').forEach(o => {
+    o.textContent = designValueLabel(o.dataset.for, d[o.dataset.for]);
+  });
+}
+
+function stickerHtml(p, rate, logo) {
+  const price = stickerPrice(p, rate);
+  return `<div class="sticker"><div class="st-content">
+    ${logo ? `<div class="st-logo-wrap"><img class="st-logo" src="${logo}" alt=""></div>` : ''}
+    <div class="st-text">
+      <div class="st-name">${escapeHtml(p.name)}</div>
+      <div class="st-divider"></div>
+      <div class="st-label">${p.unit === 'kg' ? 'السعر لكل 100 غرام' : 'سعر الحبة'}</div>
+      <div class="st-price">${price != null ? price : '<span class="st-blank"></span>'}</div>
+      <div class="st-currency">ليرة سورية جديدة</div>
+    </div>
+  </div></div>`;
+}
+
+// معاينة ستيكر واحد بحجمه الحقيقي حسب عدد الستيكرات بالورقة
+function renderStickerLivePreview(sample) {
+  const box = document.getElementById('st_livePreview');
+  const layoutKey = document.getElementById('st_layout').value;
+  const [cols, rows] = STICKER_LAYOUTS[layoutKey] || STICKER_LAYOUTS['4x6'];
+  const gap = 1.4, pad = 8;
+  const w = (210 - 2 * pad - gap * (cols - 1)) / cols;
+  const h = (297 - 2 * pad - gap * (rows - 1)) / rows;
+  box.className = 'layout-' + layoutKey;
+  box.style.gridTemplateColumns = `${w}mm`;
+  box.style.gridTemplateRows = `${h}mm`;
+  const product = sample || { name: 'كمون مطحون', unit: 'kg', sellPriceUSD: null };
+  box.innerHTML = stickerHtml(product, getCurrentRate(), state.meta.stickerLogo || null);
+}
+
+function stickerProducts() {
+  const category = document.getElementById('st_category').value;
+  return state.products.filter(p => !category || p.category === category);
+}
+function stickerExcluded() {
+  state.meta.stickerExcluded = state.meta.stickerExcluded || [];
+  return state.meta.stickerExcluded;
+}
+
+function renderStickers() {
+  const catSelect = document.getElementById('st_category');
+  const current = catSelect.value;
+  const cats = [...new Set(state.products.map(p => p.category).filter(Boolean))];
+  catSelect.innerHTML = '<option value="">كل التصنيفات</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  catSelect.value = cats.includes(current) ? current : '';
+
+  const layoutSelect = document.getElementById('st_layout');
+  if (state.meta.stickerLayout && STICKER_LAYOUTS[state.meta.stickerLayout]) layoutSelect.value = state.meta.stickerLayout;
+
+  const logo = state.meta.stickerLogo || null;
+  const logoImg = document.getElementById('st_logoPreview');
+  logoImg.classList.toggle('hidden', !logo);
+  if (logo) logoImg.src = logo; else logoImg.removeAttribute('src');
+  document.getElementById('st_noLogo').classList.toggle('hidden', !!logo);
+  document.getElementById('st_logoRemove').classList.toggle('hidden', !logo);
+
+  const rate = getCurrentRate();
+  const excluded = stickerExcluded();
+  const listEl = document.getElementById('st_list');
+  const products = stickerProducts();
+  listEl.innerHTML = products.length ? products.map(p => {
+    const price = stickerPrice(p, rate);
+    const priceLabel = price != null ? `${price} ل.س جديدة ${p.unit === 'kg' ? '/100غ' : '/حبة'}` : 'بدون سعر';
+    return `<label class="checkbox-label"><input type="checkbox" class="st-check" data-id="${p.id}" ${excluded.includes(p.id) ? '' : 'checked'}>
+      ${escapeHtml(p.name)} <span class="muted">(${priceLabel})</span></label>`;
+  }).join('') : '<span class="hint">لا يوجد منتجات</span>';
+  listEl.querySelectorAll('.st-check').forEach(cb => cb.addEventListener('change', () => {
+    const ex = stickerExcluded();
+    const i = ex.indexOf(cb.dataset.id);
+    if (cb.checked && i >= 0) ex.splice(i, 1);
+    if (!cb.checked && i < 0) ex.push(cb.dataset.id);
+    persist();
+    buildStickerSheets();
+  }));
+
+  buildStickerSheets();
+}
+
+function buildStickerSheets() {
+  const rate = getCurrentRate();
+  const layoutKey = document.getElementById('st_layout').value;
+  const [cols, rows] = STICKER_LAYOUTS[layoutKey] || STICKER_LAYOUTS['4x6'];
+  const perPage = cols * rows;
+  const copies = Math.max(1, parseInt(document.getElementById('st_copies').value, 10) || 1);
+  const logo = state.meta.stickerLogo || null;
+  const excluded = stickerExcluded();
+
+  const items = [];
+  stickerProducts().filter(p => !excluded.includes(p.id)).forEach(p => {
+    for (let i = 0; i < copies; i++) items.push(p);
+  });
+
+  const pages = [];
+  for (let i = 0; i < items.length; i += perPage) {
+    pages.push(`<div class="sticker-page layout-${layoutKey}">${items.slice(i, i + perPage).map(p => stickerHtml(p, rate, logo)).join('')}</div>`);
+  }
+  document.getElementById('stickerSheets').innerHTML = pages.join('');
+  applyStickerDesign();
+  renderStickerLivePreview(items.find(p => p.unit === 'kg' && p.sellPriceUSD != null) || items[0]);
+  fitStickerNames();
+
+  const noPrice = items.filter(p => stickerPrice(p, rate) == null).length;
+  document.getElementById('st_summary').textContent = items.length
+    ? `${items.length} ستيكر على ${pages.length} ${pages.length === 1 ? 'صفحة' : 'صفحات'} A4` +
+      (!rate ? ' — ⚠️ لا يوجد سعر صرف مسجل، الأسعار رح تنطبع فاضية' : noPrice ? ` — ${noPrice} بدون سعر بيع (رح ينطبع مكان السعر فاضي)` : '')
+    : 'ما في منتجات محددة للطباعة';
+  document.getElementById('st_printBtn').disabled = !items.length;
+}
+
+// تصغير اللوغو قبل حفظه حتى لا يملأ مساحة التخزين بالمتصفح
+function loadLogoFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 500;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      state.meta.stickerLogo = canvas.toDataURL('image/png');
+      save();
+    };
+    img.onerror = () => alert('تعذّر قراءة الصورة، جرّب صورة ثانية (PNG أو JPG)');
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 /* ---------------- Event wiring ---------------- */
 
 function setupTabs() {
@@ -914,6 +1291,7 @@ function setupTabs() {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('view-' + btn.dataset.view).classList.add('active');
+      if (btn.dataset.view === 'stickers') fitStickerNames();
     });
   });
 }
@@ -924,6 +1302,20 @@ function setupDashboard() {
     if (!val || val <= 0) { alert('أدخل سعر صرف صحيح'); return; }
     setTodayRate(val);
     document.getElementById('rateInput').value = '';
+  });
+
+  document.getElementById('cashMoveForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const amount = parseFloat(document.getElementById('cm_amount').value);
+    if (!amount || amount <= 0) { alert('أدخل مبلغاً صحيحاً'); return; }
+    addCashMovement({
+      type: document.getElementById('cm_type').value,
+      currency: document.getElementById('cm_currency').value,
+      amount,
+      note: document.getElementById('cm_note').value.trim()
+    });
+    document.getElementById('cm_amount').value = '';
+    document.getElementById('cm_note').value = '';
   });
 }
 
@@ -1013,20 +1405,51 @@ function setupBackup() {
   });
 }
 
+function currentCustomTotal() {
+  if (!document.getElementById('s_customOn').checked) return null;
+  const v = parseFloat(document.getElementById('s_customPrice').value);
+  return isNaN(v) ? 0 : v;
+}
+
+function setSellMode(mode) {
+  sellMode = mode;
+  document.querySelectorAll('#s_modeToggle .mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('s_qtyLabel').classList.toggle('hidden', sellMode !== 'qty');
+  document.getElementById('s_amountLabel').classList.toggle('hidden', sellMode !== 'amount');
+  updateSalePreview();
+}
+
 function setupSell() {
   document.getElementById('s_product').addEventListener('change', () => { updateSellFormForProduct(); updateSalePreview(); });
   document.querySelectorAll('#s_modeToggle .mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      sellMode = btn.dataset.mode;
-      document.querySelectorAll('#s_modeToggle .mode-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('s_qtyLabel').classList.toggle('hidden', sellMode !== 'qty');
-      document.getElementById('s_amountLabel').classList.toggle('hidden', sellMode !== 'amount');
+      // البيع بسعر مغاير يعتمد على الكمية + المبلغ المتفق عليه
+      if (btn.dataset.mode === 'amount' && document.getElementById('s_customOn').checked) {
+        alert('بوضع "السعر المغاير" أدخل الكمية والسعر المتفق عليه. ألغِ السعر المغاير لتبيع حسب المبلغ.');
+        return;
+      }
+      setSellMode(btn.dataset.mode);
+    });
+  });
+  document.querySelectorAll('#s_currencyToggle .mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sellCurrency = btn.dataset.currency;
+      document.querySelectorAll('#s_currencyToggle .mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.s-currency-label').forEach(x => { x.textContent = sellCurrency === 'USD' ? '(دولار $)' : '(ليرة سورية)'; });
       updateSalePreview();
     });
   });
+  document.getElementById('s_customOn').addEventListener('change', (e) => {
+    document.getElementById('s_customLabel').classList.toggle('hidden', !e.target.checked);
+    if (e.target.checked) {
+      if (sellMode !== 'qty') setSellMode('qty');
+      document.getElementById('s_customPrice').focus();
+    }
+    updateSalePreview();
+  });
   document.getElementById('s_qty').addEventListener('input', updateSalePreview);
   document.getElementById('s_amount').addEventListener('input', updateSalePreview);
+  document.getElementById('s_customPrice').addEventListener('input', updateSalePreview);
 
   document.getElementById('sellForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1035,12 +1458,18 @@ function setupSell() {
     if (!product) { alert('اختر منتجاً'); return; }
     const value = sellMode === 'qty' ? parseFloat(document.getElementById('s_qty').value) : parseFloat(document.getElementById('s_amount').value);
     if (!value || value <= 0) { alert('أدخل قيمة صحيحة'); return; }
+    const customTotal = currentCustomTotal();
+    if (customTotal != null && !(customTotal > 0)) { alert('أدخل السعر الإجمالي يلي حسبته للزبون'); return; }
     const customer = document.getElementById('s_customer').value.trim();
-    const result = recordSale(product, sellMode, value, customer);
-    if (result && result.error) { alert(result.error); return; }
+    const result = recordSale(product, sellMode, value, customer, sellCurrency, customTotal);
+    if (!result) { alert('أدخل قيمة صحيحة'); return; }
+    if (result.error) { alert(result.error); return; }
     document.getElementById('s_qty').value = '';
     document.getElementById('s_amount').value = '';
     document.getElementById('s_customer').value = '';
+    document.getElementById('s_customPrice').value = '';
+    document.getElementById('s_customOn').checked = false;
+    document.getElementById('s_customLabel').classList.add('hidden');
     document.getElementById('s_preview').className = 'preview-box';
   });
 }
@@ -1150,6 +1579,140 @@ function setupPrint() {
   });
 }
 
+function setupExpenses() {
+  document.getElementById('ex_date').value = todayStr();
+  document.getElementById('expenseForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const amount = parseFloat(document.getElementById('ex_amount').value);
+    if (!amount || amount <= 0) { alert('أدخل مبلغاً صحيحاً'); return; }
+    addExpense({
+      date: document.getElementById('ex_date').value || todayStr(),
+      title: document.getElementById('ex_title').value.trim(),
+      amount,
+      currency: document.getElementById('ex_currency').value,
+      details: document.getElementById('ex_details').value.trim(),
+      fromBox: document.getElementById('ex_fromBox').checked
+    });
+    document.getElementById('ex_title').value = '';
+    document.getElementById('ex_amount').value = '';
+    document.getElementById('ex_details').value = '';
+  });
+  ['exSearch', 'exFrom', 'exTo'].forEach(id => {
+    document.getElementById(id).addEventListener('input', renderExpenses);
+    document.getElementById(id).addEventListener('change', renderExpenses);
+  });
+  document.getElementById('exClear').addEventListener('click', () => {
+    ['exSearch', 'exFrom', 'exTo'].forEach(id => { document.getElementById(id).value = ''; });
+    renderExpenses();
+  });
+}
+
+// تصغير خط اسم المنتج الطويل تدريجياً حتى يظهر كاملاً داخل الستيكر (سطرين كحد أقصى، وبدون ما يطلع المحتوى برّا الستيكر)
+function fitStickerNames() {
+  document.querySelectorAll('#stickerSheets .st-name, #st_livePreview .st-name').forEach(n => {
+    n.style.fontSize = '';
+    const st = n.closest('.sticker');
+    const content = n.closest('.st-content');
+    const cs = getComputedStyle(st);
+    const innerH = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    // الاسم لازم يطلع كامل، ومجموع المحتوى لازم ما يطلع برّا الستيكر
+    const tooManyLines = () => n.offsetHeight > 2 * parseFloat(getComputedStyle(n).lineHeight) + 2;
+    const tooBig = () => tooManyLines() || content.offsetHeight > innerH + 1;
+    let scale = 1;
+    while (tooBig() && scale > 0.5) {
+      scale -= 0.05;
+      n.style.fontSize = `calc(var(--st-name) * var(--st-name-scale) * ${scale.toFixed(2)})`;
+    }
+  });
+  checkStickerOverflow();
+}
+
+// تنبيه إذا المحتوى (بعد تكبير اللوغو أو الإزاحة) طلع برّا حدود الستيكر
+function checkStickerOverflow() {
+  const stickers = document.querySelectorAll('#stickerSheets .sticker, #st_livePreview .sticker');
+  let overflow = false;
+  stickers.forEach(st => {
+    if (!st.offsetHeight) return; // التبويبة مخفية
+    const box = st.getBoundingClientRect();
+    const content = st.querySelector('.st-content').getBoundingClientRect();
+    if (content.top < box.top - 1 || content.bottom > box.bottom + 1 || st.querySelector('.st-content').scrollWidth > st.clientWidth + 1) overflow = true;
+  });
+  document.getElementById('st_overflowWarn').classList.toggle('hidden', !overflow);
+}
+
+// التأكد من تحميل خط Cairo قبل الطباعة حتى لا تنطبع الستيكرات بخط بديل
+function loadStickerFonts() {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  const sample = 'السعر 0123456789';
+  return Promise.all(['400', '700', '900'].map(w => document.fonts.load(`${w} 16px Cairo`, sample)))
+    .then(() => document.fonts.ready)
+    .catch(() => {});
+}
+
+function setupStickers() {
+  loadStickerFonts().then(fitStickerNames);
+  document.getElementById('st_logoFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) loadLogoFile(file);
+    e.target.value = '';
+  });
+  document.getElementById('st_logoRemove').addEventListener('click', () => {
+    if (!confirm('إزالة اللوغو من الستيكرات؟')) return;
+    delete state.meta.stickerLogo;
+    save();
+  });
+  document.getElementById('st_layout').addEventListener('change', (e) => {
+    state.meta.stickerLayout = e.target.value;
+    persist();
+    buildStickerSheets();
+  });
+  document.getElementById('st_copies').addEventListener('input', buildStickerSheets);
+
+  // لوحة التصميم: كل تغيير بينطبق فوراً وبينحفظ
+  let refitTimer = null;
+  document.querySelectorAll('#st_designPanel [data-key]').forEach(input => {
+    input.addEventListener('input', () => {
+      const key = input.dataset.key;
+      const design = { ...(state.meta.stickerDesign || {}) };
+      design[key] = input.type === 'checkbox' ? input.checked
+        : input.type === 'range' ? parseFloat(input.value)
+        : input.value;
+      state.meta.stickerDesign = design;
+      persist();
+      applyStickerDesign();
+      clearTimeout(refitTimer);
+      refitTimer = setTimeout(fitStickerNames, 150);
+    });
+  });
+  document.getElementById('st_designReset').addEventListener('click', () => {
+    if (!confirm('رجوع لكل إعدادات التصميم الأصلية؟')) return;
+    delete state.meta.stickerDesign;
+    persist();
+    applyStickerDesign();
+    fitStickerNames();
+  });
+  document.getElementById('st_category').addEventListener('change', renderStickers);
+  document.getElementById('st_all').addEventListener('click', () => {
+    const ids = stickerProducts().map(p => p.id);
+    state.meta.stickerExcluded = stickerExcluded().filter(id => !ids.includes(id));
+    persist();
+    renderStickers();
+  });
+  document.getElementById('st_none').addEventListener('click', () => {
+    const ex = stickerExcluded();
+    stickerProducts().forEach(p => { if (!ex.includes(p.id)) ex.push(p.id); });
+    persist();
+    renderStickers();
+  });
+  document.getElementById('st_printBtn').addEventListener('click', async () => {
+    buildStickerSheets();
+    await loadStickerFonts();
+    document.body.classList.add('print-stickers');
+    window.print();
+  });
+  window.addEventListener('afterprint', () => document.body.classList.remove('print-stickers'));
+}
+
 /* ---------------- Init ---------------- */
 
 function init() {
@@ -1161,8 +1724,10 @@ function init() {
   setupInventory();
   setupSell();
   setupSuppliers();
+  setupExpenses();
   setupReports();
   setupPrint();
+  setupStickers();
   document.getElementById('rep_date').value = todayStr();
   renderAll();
 }

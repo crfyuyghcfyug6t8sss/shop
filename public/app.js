@@ -1086,12 +1086,109 @@ function renderExpenses() {
 
 const STICKER_LAYOUTS = { '4x6': [4, 6], '4x7': [4, 7], '5x8': [5, 8] };
 
-// السعر على الستيكر: بالليرة لكل 100 غرام (أو للحبة)، بعد حذف صفرين، مجبور لفوق لأقرب عدد صحيح
+// السعر على الستيكر: بالليرة الجديدة (بعد حذف صفرين) لكل 100 غرام (أو للحبة)،
+// مجبور على مضاعفات أصغر فئة عملة (50) حتى يكون قابل للدفع بالفئات الموجودة: 50، 100، 200، 500
+function stickerRounding() {
+  return {
+    step: parseInt(state.meta.stickerRoundStep, 10) || 50,
+    mode: state.meta.stickerRoundMode === 'up' ? 'up' : 'nearest'
+  };
+}
 function stickerPrice(p, rate) {
   if (p.sellPriceUSD == null || !rate) return null;
   const syp = p.unit === 'kg' ? p.sellPriceUSD * rate / 10 : p.sellPriceUSD * rate;
   const shortened = Math.round((syp / 100) * 1e6) / 1e6; // إزالة أخطاء الفاصلة العائمة قبل الجبر
-  return Math.ceil(shortened);
+  const { step, mode } = stickerRounding();
+  const units = shortened / step;
+  const rounded = (mode === 'up' ? Math.ceil(units) : Math.floor(units + 0.5)) * step;
+  return Math.max(step, rounded); // ما في سعر أقل من أصغر فئة
+}
+
+/* ---- تعديل تصميم الستيكر ---- */
+const STICKER_DESIGN_DEFAULTS = {
+  logoScale: 1, logoGap: 0.4, logoBadge: true,
+  nameScale: 1, priceScale: 1, smallScale: 1, lineGap: 0.3,
+  offsetY: 0, textOffsetY: 0,
+  bg: '#174a2b', fg: '#ffffff', accent: '#e3c77d',
+  frame: true, divider: true, leaf: true
+};
+const STICKER_DESIGN_MM_KEYS = ['logoGap', 'lineGap', 'offsetY', 'textOffsetY'];
+
+function stickerDesign() {
+  return { ...STICKER_DESIGN_DEFAULTS, ...(state.meta.stickerDesign || {}) };
+}
+
+function designValueLabel(key, v) {
+  if (STICKER_DESIGN_MM_KEYS.includes(key)) {
+    if (key === 'offsetY' || key === 'textOffsetY') {
+      if (Math.abs(v) < 0.01) return 'بالنص';
+      return `${Math.abs(v)} مم ${v > 0 ? 'لتحت' : 'لفوق'}`;
+    }
+    return `${v} مم`;
+  }
+  return Math.round(v * 100) + '%';
+}
+
+// تطبيق التصميم كمتغيرات CSS على تبويبة الستيكرات (المعاينة والصفحات بيتغيروا فوراً)
+function applyStickerDesign() {
+  const d = stickerDesign();
+  const root = document.getElementById('view-stickers');
+  const set = (k, v) => root.style.setProperty(k, v);
+  set('--st-bg', d.bg);
+  set('--st-fg', d.fg);
+  set('--st-gold', d.accent);
+  set('--st-logo-scale', d.logoScale);
+  set('--st-logo-gap', d.logoGap + 'mm');
+  set('--st-name-scale', d.nameScale);
+  set('--st-price-scale', d.priceScale);
+  set('--st-small-scale', d.smallScale);
+  set('--st-line-gap', d.lineGap + 'mm');
+  set('--st-offset', d.offsetY + 'mm');
+  set('--st-text-offset', d.textOffsetY + 'mm');
+  set('--st-frame', d.frame ? 'block' : 'none');
+  set('--st-divider', d.divider ? 'block' : 'none');
+  set('--st-leaf', d.leaf ? 'block' : 'none');
+  set('--st-badge-bg', d.logoBadge ? '#fbf6ea' : 'transparent');
+  set('--st-badge-pad', d.logoBadge ? '0.8mm 3mm' : '0');
+  set('--st-badge-shadow', d.logoBadge ? '0 0.4mm 1.2mm rgba(0,0,0,0.25)' : 'none');
+
+  document.querySelectorAll('#st_designPanel [data-key]').forEach(input => {
+    const v = d[input.dataset.key];
+    if (input.type === 'checkbox') input.checked = !!v;
+    else if (document.activeElement !== input) input.value = v;
+  });
+  document.querySelectorAll('#st_designPanel output[data-for]').forEach(o => {
+    o.textContent = designValueLabel(o.dataset.for, d[o.dataset.for]);
+  });
+}
+
+function stickerHtml(p, rate, logo) {
+  const price = stickerPrice(p, rate);
+  return `<div class="sticker"><div class="st-content">
+    ${logo ? `<div class="st-logo-wrap"><img class="st-logo" src="${logo}" alt=""></div>` : ''}
+    <div class="st-text">
+      <div class="st-name">${escapeHtml(p.name)}</div>
+      <div class="st-divider"></div>
+      <div class="st-label">${p.unit === 'kg' ? 'السعر لكل 100 غرام' : 'سعر الحبة'}</div>
+      <div class="st-price">${price != null ? price : '<span class="st-blank"></span>'}</div>
+      <div class="st-currency">ليرة سورية جديدة</div>
+    </div>
+  </div></div>`;
+}
+
+// معاينة ستيكر واحد بحجمه الحقيقي حسب عدد الستيكرات بالورقة
+function renderStickerLivePreview(sample) {
+  const box = document.getElementById('st_livePreview');
+  const layoutKey = document.getElementById('st_layout').value;
+  const [cols, rows] = STICKER_LAYOUTS[layoutKey] || STICKER_LAYOUTS['4x6'];
+  const gap = 1.4, pad = 8;
+  const w = (210 - 2 * pad - gap * (cols - 1)) / cols;
+  const h = (297 - 2 * pad - gap * (rows - 1)) / rows;
+  box.className = 'layout-' + layoutKey;
+  box.style.gridTemplateColumns = `${w}mm`;
+  box.style.gridTemplateRows = `${h}mm`;
+  const product = sample || { name: 'كمون مطحون', unit: 'kg', sellPriceUSD: null };
+  box.innerHTML = stickerHtml(product, getCurrentRate(), state.meta.stickerLogo || null);
 }
 
 function stickerProducts() {
@@ -1112,6 +1209,9 @@ function renderStickers() {
 
   const layoutSelect = document.getElementById('st_layout');
   if (state.meta.stickerLayout && STICKER_LAYOUTS[state.meta.stickerLayout]) layoutSelect.value = state.meta.stickerLayout;
+  const rounding = stickerRounding();
+  document.getElementById('st_roundStep').value = String(rounding.step);
+  document.getElementById('st_roundMode').value = rounding.mode;
 
   const logo = state.meta.stickerLogo || null;
   const logoImg = document.getElementById('st_logoPreview');
@@ -1126,7 +1226,7 @@ function renderStickers() {
   const products = stickerProducts();
   listEl.innerHTML = products.length ? products.map(p => {
     const price = stickerPrice(p, rate);
-    const priceLabel = price != null ? `${price} ${p.unit === 'kg' ? '/100غ' : '/حبة'}` : 'بدون سعر';
+    const priceLabel = price != null ? `${price} ل.س جديدة ${p.unit === 'kg' ? '/100غ' : '/حبة'}` : 'بدون سعر';
     return `<label class="checkbox-label"><input type="checkbox" class="st-check" data-id="${p.id}" ${excluded.includes(p.id) ? '' : 'checked'}>
       ${escapeHtml(p.name)} <span class="muted">(${priceLabel})</span></label>`;
   }).join('') : '<span class="hint">لا يوجد منتجات</span>';
@@ -1156,22 +1256,13 @@ function buildStickerSheets() {
     for (let i = 0; i < copies; i++) items.push(p);
   });
 
-  const stickerHtml = p => {
-    const price = stickerPrice(p, rate);
-    return `<div class="sticker">
-      ${logo ? `<div class="st-logo-wrap"><img class="st-logo" src="${logo}" alt=""></div>` : ''}
-      <div class="st-name">${escapeHtml(p.name)}</div>
-      <div class="st-divider"></div>
-      <div class="st-label">${p.unit === 'kg' ? 'السعر لكل 100 غرام' : 'سعر الحبة'}</div>
-      <div class="st-price">${price != null ? `${price} <small>ل.س</small>` : '<span class="st-blank"></span>'}</div>
-    </div>`;
-  };
-
   const pages = [];
   for (let i = 0; i < items.length; i += perPage) {
-    pages.push(`<div class="sticker-page layout-${layoutKey}">${items.slice(i, i + perPage).map(stickerHtml).join('')}</div>`);
+    pages.push(`<div class="sticker-page layout-${layoutKey}">${items.slice(i, i + perPage).map(p => stickerHtml(p, rate, logo)).join('')}</div>`);
   }
   document.getElementById('stickerSheets').innerHTML = pages.join('');
+  applyStickerDesign();
+  renderStickerLivePreview(items.find(p => p.unit === 'kg' && p.sellPriceUSD != null) || items[0]);
   fitStickerNames();
 
   const noPrice = items.filter(p => stickerPrice(p, rate) == null).length;
@@ -1528,16 +1619,37 @@ function setupExpenses() {
   });
 }
 
-// تصغير خط اسم المنتج الطويل تدريجياً حتى يظهر كاملاً داخل الستيكر (سطرين كحد أقصى)
+// تصغير خط اسم المنتج الطويل تدريجياً حتى يظهر كاملاً داخل الستيكر (سطرين كحد أقصى، وبدون ما يطلع المحتوى برّا الستيكر)
 function fitStickerNames() {
-  document.querySelectorAll('#stickerSheets .st-name').forEach(n => {
+  document.querySelectorAll('#stickerSheets .st-name, #st_livePreview .st-name').forEach(n => {
     n.style.fontSize = '';
+    const st = n.closest('.sticker');
+    const content = n.closest('.st-content');
+    const cs = getComputedStyle(st);
+    const innerH = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    // الاسم لازم يطلع كامل، ومجموع المحتوى لازم ما يطلع برّا الستيكر
+    const tooManyLines = () => n.offsetHeight > 2 * parseFloat(getComputedStyle(n).lineHeight) + 2;
+    const tooBig = () => tooManyLines() || content.offsetHeight > innerH + 1;
     let scale = 1;
-    while (n.scrollHeight > n.clientHeight + 1 && scale > 0.6) {
+    while (tooBig() && scale > 0.5) {
       scale -= 0.05;
-      n.style.fontSize = `calc(var(--st-name) * ${scale.toFixed(2)})`;
+      n.style.fontSize = `calc(var(--st-name) * var(--st-name-scale) * ${scale.toFixed(2)})`;
     }
   });
+  checkStickerOverflow();
+}
+
+// تنبيه إذا المحتوى (بعد تكبير اللوغو أو الإزاحة) طلع برّا حدود الستيكر
+function checkStickerOverflow() {
+  const stickers = document.querySelectorAll('#stickerSheets .sticker, #st_livePreview .sticker');
+  let overflow = false;
+  stickers.forEach(st => {
+    if (!st.offsetHeight) return; // التبويبة مخفية
+    const box = st.getBoundingClientRect();
+    const content = st.querySelector('.st-content').getBoundingClientRect();
+    if (content.top < box.top - 1 || content.bottom > box.bottom + 1 || st.querySelector('.st-content').scrollWidth > st.clientWidth + 1) overflow = true;
+  });
+  document.getElementById('st_overflowWarn').classList.toggle('hidden', !overflow);
 }
 
 // التأكد من تحميل خط Cairo قبل الطباعة حتى لا تنطبع الستيكرات بخط بديل
@@ -1567,6 +1679,40 @@ function setupStickers() {
     buildStickerSheets();
   });
   document.getElementById('st_copies').addEventListener('input', buildStickerSheets);
+  document.getElementById('st_roundStep').addEventListener('change', (e) => {
+    state.meta.stickerRoundStep = parseInt(e.target.value, 10);
+    persist();
+    renderStickers();
+  });
+  document.getElementById('st_roundMode').addEventListener('change', (e) => {
+    state.meta.stickerRoundMode = e.target.value;
+    persist();
+    renderStickers();
+  });
+
+  // لوحة التصميم: كل تغيير بينطبق فوراً وبينحفظ
+  let refitTimer = null;
+  document.querySelectorAll('#st_designPanel [data-key]').forEach(input => {
+    input.addEventListener('input', () => {
+      const key = input.dataset.key;
+      const design = { ...(state.meta.stickerDesign || {}) };
+      design[key] = input.type === 'checkbox' ? input.checked
+        : input.type === 'range' ? parseFloat(input.value)
+        : input.value;
+      state.meta.stickerDesign = design;
+      persist();
+      applyStickerDesign();
+      clearTimeout(refitTimer);
+      refitTimer = setTimeout(fitStickerNames, 150);
+    });
+  });
+  document.getElementById('st_designReset').addEventListener('click', () => {
+    if (!confirm('رجوع لكل إعدادات التصميم الأصلية؟')) return;
+    delete state.meta.stickerDesign;
+    persist();
+    applyStickerDesign();
+    fitStickerNames();
+  });
   document.getElementById('st_category').addEventListener('change', renderStickers);
   document.getElementById('st_all').addEventListener('click', () => {
     const ids = stickerProducts().map(p => p.id);

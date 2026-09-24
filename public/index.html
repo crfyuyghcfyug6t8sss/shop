@@ -547,7 +547,7 @@
     <section id="view-stickers" class="view">
       <div class="card no-print">
         <h2>طباعة ستيكرات الأسعار</h2>
-        <p class="hint">كل ستيكر فيه: اللوغو، اسم المنتج، والسعر لكل 100 غرام بالليرة السورية (بعد حذف صفرين، ومجبور لأقرب عدد صحيح لفوق بدون فواصل — مثلاً 42,450 ل.س بتنطبع 425). المنتجات يلي بتنباع بالحبة بينطبع عليها سعر الحبة.</p>
+        <p class="hint">كل ستيكر فيه: اللوغو، اسم المنتج، والسعر لكل 100 غرام بالليرة السورية الجديدة (بعد حذف صفرين، ومجبور على فئات العملة الموجودة — مثلاً 92 بتصير 100، و130 بتصير 150). المنتجات يلي بتنباع بالحبة بينطبع عليها سعر الحبة.</p>
         <div class="form-grid">
           <label>اللوغو
             <input type="file" id="st_logoFile" accept="image/*">
@@ -570,7 +570,70 @@
           <label>التصنيف
             <select id="st_category"><option value="">كل التصنيفات</option></select>
           </label>
+          <label>جبر السعر لمضاعفات
+            <select id="st_roundStep">
+              <option value="50">50 (أصغر فئة)</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <label>طريقة الجبر
+            <select id="st_roundMode">
+              <option value="nearest">لأقرب رقم (92 ← 100، 115 ← 100)</option>
+              <option value="up">دايماً لفوق (92 ← 100، 115 ← 150)</option>
+            </select>
+          </label>
         </div>
+
+        <details class="design-panel" id="st_designPanel" open>
+          <summary>🎨 تعديل التصميم (بتشوف التغيير مباشرة)</summary>
+          <div class="design-layout">
+            <div class="design-controls">
+              <div class="design-group">
+                <h4>اللوغو</h4>
+                <label class="range-label">حجم اللوغو <output data-for="logoScale"></output>
+                  <input type="range" data-key="logoScale" min="0.5" max="3" step="0.05"></label>
+                <label class="range-label">المسافة تحت اللوغو <output data-for="logoGap"></output>
+                  <input type="range" data-key="logoGap" min="-3" max="8" step="0.1"></label>
+                <label class="checkbox-label"><input type="checkbox" data-key="logoBadge"> خلفية فاتحة ورا اللوغو</label>
+              </div>
+              <div class="design-group">
+                <h4>الكتابة</h4>
+                <label class="range-label">حجم اسم المنتج <output data-for="nameScale"></output>
+                  <input type="range" data-key="nameScale" min="0.5" max="2" step="0.05"></label>
+                <label class="range-label">حجم السعر <output data-for="priceScale"></output>
+                  <input type="range" data-key="priceScale" min="0.5" max="2" step="0.05"></label>
+                <label class="range-label">حجم الكلام الصغير <output data-for="smallScale"></output>
+                  <input type="range" data-key="smallScale" min="0.5" max="2" step="0.05"></label>
+                <label class="range-label">المسافة بين الأسطر <output data-for="lineGap"></output>
+                  <input type="range" data-key="lineGap" min="0" max="6" step="0.1"></label>
+              </div>
+              <div class="design-group">
+                <h4>المكان</h4>
+                <label class="range-label">نزّل / طلّع المحتوى كلو <output data-for="offsetY"></output>
+                  <input type="range" data-key="offsetY" min="-15" max="15" step="0.25"></label>
+                <label class="range-label">نزّل / طلّع الكلام بس (بدون اللوغو) <output data-for="textOffsetY"></output>
+                  <input type="range" data-key="textOffsetY" min="-10" max="10" step="0.25"></label>
+              </div>
+              <div class="design-group">
+                <h4>الألوان والزخرفة</h4>
+                <div class="color-row">
+                  <label>الخلفية <input type="color" data-key="bg"></label>
+                  <label>الخط <input type="color" data-key="fg"></label>
+                  <label>الذهبي <input type="color" data-key="accent"></label>
+                </div>
+                <label class="checkbox-label"><input type="checkbox" data-key="frame"> إطار داخلي</label>
+                <label class="checkbox-label"><input type="checkbox" data-key="divider"> خط زخرفة تحت الاسم</label>
+                <label class="checkbox-label"><input type="checkbox" data-key="leaf"> ورقة شفافة بالزاوية</label>
+              </div>
+              <button type="button" class="btn small" id="st_designReset">↺ رجوع للتصميم الأصلي</button>
+            </div>
+            <div class="design-preview">
+              <div class="hint">معاينة بالحجم الحقيقي:</div>
+              <div id="st_livePreview"></div>
+              <div id="st_overflowWarn" class="overflow-warn hidden">⚠️ الكلام طالع برّا حدود الستيكر عند بعض المنتجات — صغّر اللوغو أو الخط، أو حرّك المحتوى.</div>
+            </div>
+          </div>
+        </details>
 
         <div class="card-header-row" style="margin-top:14px">
           <h3>المنتجات يلي رح تنطبع</h3>

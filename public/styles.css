@@ -404,36 +404,45 @@ tbody tr:hover { background: #fdf8f1; }
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
-.sticker-page.layout-4x6 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(6, 1fr); --st-name: 15pt; --st-price: 31pt; --st-logo: 10mm; }
-.sticker-page.layout-4x7 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(7, 1fr); --st-name: 13.5pt; --st-price: 27pt; --st-logo: 8.5mm; }
-.sticker-page.layout-5x8 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(8, 1fr); --st-name: 11pt; --st-price: 20pt; --st-logo: 6.5mm; }
+.sticker-page.layout-4x6 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(6, 1fr); }
+.layout-4x6 { --st-name: 14pt; --st-price: 28pt; --st-logo: 9mm; }
+.sticker-page.layout-4x7 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(7, 1fr); }
+.layout-4x7 { --st-name: 12pt; --st-price: 23pt; --st-logo: 7mm; }
+.sticker-page.layout-5x8 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(8, 1fr); }
+.layout-5x8 { --st-name: 10pt; --st-price: 18pt; --st-logo: 5.5mm; }
 
 /* ستيكر بخلفية خضراء غامقة وخط Cairo أبيض، مع إطار ذهبي داخلي.
-   الفراغات البيضاء بين الستيكرات هي خطوط القص */
+   الفراغات البيضاء بين الستيكرات هي خطوط القص.
+   كل القيم القابلة للتعديل (أحجام، مسافات، ألوان) متغيرات CSS بتنضبط من لوحة "تعديل التصميم" */
+#view-stickers {
+  --st-bg: #174a2b; --st-fg: #ffffff; --st-gold: #e3c77d;
+  --st-logo-scale: 1; --st-logo-gap: 0.4mm; --st-name-scale: 1; --st-price-scale: 1; --st-small-scale: 1;
+  --st-line-gap: 0.3mm; --st-offset: 0mm; --st-text-offset: 0mm;
+  --st-frame: block; --st-divider: block; --st-leaf: block; --st-badge-bg: #fbf6ea; --st-badge-pad: 0.8mm 3mm; --st-badge-shadow: 0 0.4mm 1.2mm rgba(0,0,0,0.25);
+}
 .sticker-page { gap: 1.4mm; }
 .sticker {
-  --st-gold: #e3c77d;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.6mm;
   text-align: center;
-  padding: 3mm 3.2mm;
+  padding: 2.6mm 3.2mm;
   overflow: hidden;
   min-width: 0;
   min-height: 0;
   font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-  color: #fff;
+  color: var(--st-fg);
   background:
     radial-gradient(circle at 50% -10%, rgba(255,255,255,0.16), rgba(255,255,255,0) 60%),
-    radial-gradient(circle at 100% 100%, rgba(227,199,125,0.14), rgba(227,199,125,0) 45%),
-    linear-gradient(160deg, #24603a 0%, #174a2b 55%, #10371f 100%);
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--st-gold) 14%, transparent), transparent 45%),
+    linear-gradient(160deg, color-mix(in srgb, var(--st-bg) 82%, white) 0%, var(--st-bg) 55%, color-mix(in srgb, var(--st-bg) 72%, black) 100%);
 }
-/* إطار ذهبي داخلي بزوايا دائرية */
+/* إطار داخلي بزوايا دائرية */
 .sticker::before {
   content: "";
+  display: var(--st-frame);
   position: absolute;
   inset: 1.5mm;
   border: 0.3mm solid var(--st-gold);
@@ -444,6 +453,7 @@ tbody tr:hover { background: #fdf8f1; }
 /* ورقة زخرفية شفافة بالزاوية */
 .sticker::after {
   content: "";
+  display: var(--st-leaf);
   position: absolute;
   width: 55%;
   aspect-ratio: 1;
@@ -454,32 +464,46 @@ tbody tr:hover { background: #fdf8f1; }
   transform: rotate(-20deg);
   pointer-events: none;
 }
-.sticker > * { position: relative; z-index: 1; }
+.sticker .st-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(var(--st-offset));
+}
+.sticker .st-text {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--st-line-gap);
+  transform: translateY(var(--st-text-offset));
+}
 .sticker .st-logo-wrap {
-  background: #fbf6ea;
+  background: var(--st-badge-bg);
   border-radius: 999px;
-  padding: 0.8mm 3mm;
+  padding: var(--st-badge-pad);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0.4mm 1.2mm rgba(0,0,0,0.25);
-  margin-bottom: 0.4mm;
+  box-shadow: var(--st-badge-shadow);
+  margin-bottom: var(--st-logo-gap);
+  max-width: 100%;
 }
-.sticker .st-logo { max-height: var(--st-logo); max-width: 100%; object-fit: contain; display: block; }
+.sticker .st-logo { height: calc(var(--st-logo) * var(--st-logo-scale)); max-width: 100%; object-fit: contain; display: block; }
 .sticker .st-name {
-  font-size: var(--st-name);
+  font-size: calc(var(--st-name) * var(--st-name-scale));
   font-weight: 900;
-  line-height: 1.5;
-  padding-bottom: 0.3mm;
+  line-height: 1.4;
+  padding-bottom: 0.4mm;
   max-width: 100%;
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   text-shadow: 0 0.3mm 0.8mm rgba(0,0,0,0.3);
 }
 .sticker .st-divider {
+  display: var(--st-divider);
   width: 62%;
   height: 0.3mm;
   background: linear-gradient(90deg, transparent, var(--st-gold), transparent);
@@ -495,10 +519,28 @@ tbody tr:hover { background: #fdf8f1; }
   background: var(--st-gold);
   transform: translate(-50%, -50%) rotate(45deg);
 }
-.sticker .st-label { font-size: calc(var(--st-name) * 0.58); font-weight: 700; color: var(--st-gold); line-height: 1.3; }
-.sticker .st-price { font-size: var(--st-price); font-weight: 900; line-height: 1; direction: ltr; display: flex; align-items: baseline; gap: 1mm; }
-.sticker .st-price small { font-size: 0.4em; font-weight: 700; color: var(--st-gold); direction: rtl; }
-.sticker .st-blank { display: inline-block; width: 18mm; border-bottom: 0.4mm solid #fff; height: calc(var(--st-price) * 0.85); }
+.sticker .st-label,
+.sticker .st-currency { font-size: calc(var(--st-name) * 0.58 * var(--st-small-scale)); font-weight: 700; color: var(--st-gold); line-height: 1.3; }
+.sticker .st-price { font-size: calc(var(--st-price) * var(--st-price-scale)); font-weight: 900; line-height: 1; }
+.sticker .st-blank { display: inline-block; width: 18mm; border-bottom: 0.4mm solid var(--st-fg); height: calc(var(--st-price) * 0.85); }
+
+/* لوحة تعديل التصميم */
+.design-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: #fffdf9; }
+.design-panel summary { cursor: pointer; font-weight: bold; color: var(--brown-dark); font-size: 1.05rem; }
+.design-layout { display: grid; grid-template-columns: 1fr auto; gap: 20px; margin-top: 12px; align-items: start; }
+@media (max-width: 800px) { .design-layout { grid-template-columns: 1fr; } }
+.design-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 18px; align-content: start; }
+.design-group h4 { margin: 0 0 6px; color: var(--brown); font-size: 0.95rem; }
+.range-label { display: flex; flex-direction: column; font-size: 0.85rem; margin-bottom: 8px; color: var(--brown-dark); }
+.range-label output { font-weight: bold; color: var(--orange); margin-inline-start: 4px; }
+.range-label input[type="range"] { width: 100%; accent-color: var(--orange); }
+.color-row { display: flex; gap: 12px; margin-bottom: 6px; }
+.color-row label { display: flex; flex-direction: column; align-items: center; font-size: 0.8rem; gap: 2px; }
+.color-row input[type="color"] { width: 42px; height: 30px; border: 1px solid var(--border); border-radius: 6px; padding: 1px; background: #fff; cursor: pointer; }
+.design-preview { position: sticky; top: 10px; }
+#st_designReset { grid-column: 1 / -1; justify-self: start; }
+.overflow-warn { color: var(--red); font-size: 0.82rem; font-weight: bold; margin-top: 6px; max-width: 220px; }
+#st_livePreview { display: grid; padding: 6px; background: #fff; border: 1px dashed var(--border); border-radius: 8px; }
 
 /* ===== Print ===== */
 @media print {

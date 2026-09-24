@@ -110,14 +110,15 @@ input, select, button {
   font-size: 0.95rem;
 }
 
-input[type="text"], input[type="number"], input[type="date"], select {
+input[type="text"], input[type="number"], input[type="date"], select, textarea {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fffdfa;
   color: var(--text);
 }
-input:focus, select:focus { outline: 2px solid var(--orange-light); }
+textarea { font-family: inherit; font-size: 0.95rem; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--orange-light); }
 
 .btn {
   padding: 9px 18px;
@@ -157,6 +158,10 @@ input:focus, select:focus { outline: 2px solid var(--orange-light); }
 .form-grid label small, #sellForm label small { color: var(--muted); font-weight: normal; }
 
 .form-actions { grid-column: 1 / -1; margin-top: 6px; }
+.full-row { grid-column: 1 / -1; }
+
+.field-title { font-size: 0.9rem; color: var(--brown-dark); font-weight: 600; margin-bottom: 4px; }
+.custom-price-toggle { margin-bottom: 10px; color: var(--brown-dark); }
 
 #sellForm label, #purchaseForm label, #paymentForm label { margin-bottom: 10px; }
 
@@ -194,6 +199,8 @@ input:focus, select:focus { outline: 2px solid var(--orange-light); }
 .stat-value { font-size: 1.4rem; font-weight: bold; color: var(--brown-dark); }
 .stat-box.profit .stat-value { color: var(--green); }
 .stat-box.debt .stat-value { color: var(--red); }
+.stat-box.cash-box { background: #e6f0fb; }
+.stat-box.cash-box .stat-value { color: #1f4e79; font-size: 1.7rem; }
 
 .stat-sub {
   display: flex;
@@ -245,6 +252,7 @@ tbody tr:hover { background: #fdf8f1; }
 .preview-box .warn { color: var(--red); font-weight: bold; }
 
 .hidden { display: none !important; }
+.pre-wrap { white-space: pre-wrap; }
 
 .totals-row {
   margin-top: 10px;
@@ -353,10 +361,88 @@ tbody tr:hover { background: #fdf8f1; }
 .badge.credit { background: #fdeaea; color: var(--red); }
 .badge.partial { background: #fff3d6; color: #a06a00; }
 
+/* ===== Stickers ===== */
+.logo-box { display: flex; align-items: center; gap: 12px; }
+.logo-box img { max-height: 70px; max-width: 160px; border: 1px solid var(--border); border-radius: 6px; padding: 4px; background: #fff; }
+
+.sticker-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px 14px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0 12px;
+}
+.sticker-checklist .checkbox-label { font-size: 0.9rem; }
+.sticker-checklist .muted { color: var(--muted); font-size: 0.8rem; }
+
+.sticker-sheets { page: stickers; overflow-x: auto; padding-bottom: 10px; }
+
+@page stickers { size: A4 portrait; margin: 0; }
+
+.sticker-page {
+  width: 210mm;
+  height: 297mm;
+  padding: 8mm;
+  margin: 0 auto 20px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  display: grid;
+  overflow: hidden;
+  direction: rtl;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.sticker-page.layout-4x6 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(6, 1fr); --st-name: 15pt; --st-price: 30pt; --st-logo: 15mm; }
+.sticker-page.layout-4x7 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(7, 1fr); --st-name: 14pt; --st-price: 27pt; --st-logo: 12mm; }
+.sticker-page.layout-5x8 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(8, 1fr); --st-name: 11pt; --st-price: 21pt; --st-logo: 9mm; }
+
+.sticker {
+  border: 0.2mm dashed #999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2mm;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  color: #000;
+}
+.sticker .st-logo { max-height: var(--st-logo); max-width: 85%; object-fit: contain; margin-bottom: 1mm; }
+.sticker .st-name {
+  font-size: var(--st-name);
+  font-weight: bold;
+  line-height: 1.15;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sticker .st-label { font-size: calc(var(--st-name) * 0.62); color: #444; margin-top: 1mm; }
+.sticker .st-price { font-size: var(--st-price); font-weight: 900; line-height: 1.1; direction: ltr; }
+.sticker .st-price small { font-size: 0.45em; font-weight: bold; }
+.sticker .st-blank { display: inline-block; width: 60%; border-bottom: 0.4mm solid #000; height: calc(var(--st-price) * 0.9); }
+
 /* ===== Print ===== */
 @media print {
-  body * { visibility: hidden; }
-  #printArea, #printArea * { visibility: visible; }
+  body.print-stickers { background: #fff; }
+  body.print-stickers .topbar,
+  body.print-stickers .tabs,
+  body.print-stickers .no-print { display: none !important; }
+  body.print-stickers #main { padding: 0; margin: 0; max-width: none; }
+  body.print-stickers .sticker-sheets { overflow: visible; padding: 0; }
+  .sticker-page { margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
+  .sticker-page:last-child { break-after: auto; page-break-after: auto; }
+
+  body:not(.print-stickers) * { visibility: hidden; }
+  body:not(.print-stickers) #printArea, body:not(.print-stickers) #printArea * { visibility: visible; }
   #printArea {
     position: absolute;
     top: 0;

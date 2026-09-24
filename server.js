@@ -13,7 +13,10 @@ const DEFAULT_DB = {
   exchangeRates: [],
   products: [],
   suppliers: [],
-  sales: []
+  sales: [],
+  categories: [],
+  expenses: [],
+  cashMovements: []
 };
 
 function ensureDb() {

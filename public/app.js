@@ -1087,21 +1087,12 @@ function renderExpenses() {
 const STICKER_LAYOUTS = { '4x6': [4, 6], '4x7': [4, 7], '5x8': [5, 8] };
 
 // السعر على الستيكر: بالليرة الجديدة (بعد حذف صفرين) لكل 100 غرام (أو للحبة)،
-// مجبور على مضاعفات أصغر فئة عملة (50) حتى يكون قابل للدفع بالفئات الموجودة: 50، 100، 200، 500
-function stickerRounding() {
-  return {
-    step: parseInt(state.meta.stickerRoundStep, 10) || 50,
-    mode: state.meta.stickerRoundMode === 'up' ? 'up' : 'nearest'
-  };
-}
+// كرقم صحيح بدون فواصل: الكسور بتنجبر لفوق لأقرب رقم صحيح (424.3 ← 425)
 function stickerPrice(p, rate) {
   if (p.sellPriceUSD == null || !rate) return null;
   const syp = p.unit === 'kg' ? p.sellPriceUSD * rate / 10 : p.sellPriceUSD * rate;
   const shortened = Math.round((syp / 100) * 1e6) / 1e6; // إزالة أخطاء الفاصلة العائمة قبل الجبر
-  const { step, mode } = stickerRounding();
-  const units = shortened / step;
-  const rounded = (mode === 'up' ? Math.ceil(units) : Math.floor(units + 0.5)) * step;
-  return Math.max(step, rounded); // ما في سعر أقل من أصغر فئة
+  return Math.ceil(shortened);
 }
 
 /* ---- تعديل تصميم الستيكر ---- */
@@ -1209,9 +1200,6 @@ function renderStickers() {
 
   const layoutSelect = document.getElementById('st_layout');
   if (state.meta.stickerLayout && STICKER_LAYOUTS[state.meta.stickerLayout]) layoutSelect.value = state.meta.stickerLayout;
-  const rounding = stickerRounding();
-  document.getElementById('st_roundStep').value = String(rounding.step);
-  document.getElementById('st_roundMode').value = rounding.mode;
 
   const logo = state.meta.stickerLogo || null;
   const logoImg = document.getElementById('st_logoPreview');
@@ -1679,16 +1667,6 @@ function setupStickers() {
     buildStickerSheets();
   });
   document.getElementById('st_copies').addEventListener('input', buildStickerSheets);
-  document.getElementById('st_roundStep').addEventListener('change', (e) => {
-    state.meta.stickerRoundStep = parseInt(e.target.value, 10);
-    persist();
-    renderStickers();
-  });
-  document.getElementById('st_roundMode').addEventListener('change', (e) => {
-    state.meta.stickerRoundMode = e.target.value;
-    persist();
-    renderStickers();
-  });
 
   // لوحة التصميم: كل تغيير بينطبق فوراً وبينحفظ
   let refitTimer = null;

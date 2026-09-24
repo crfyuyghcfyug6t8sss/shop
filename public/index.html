@@ -547,7 +547,7 @@
     <section id="view-stickers" class="view">
       <div class="card no-print">
         <h2>طباعة ستيكرات الأسعار</h2>
-        <p class="hint">كل ستيكر فيه: اللوغو، اسم المنتج، والسعر لكل 100 غرام بالليرة السورية الجديدة (بعد حذف صفرين، ومجبور على فئات العملة الموجودة — مثلاً 92 بتصير 100، و130 بتصير 150). المنتجات يلي بتنباع بالحبة بينطبع عليها سعر الحبة.</p>
+        <p class="hint">كل ستيكر فيه: اللوغو، اسم المنتج، والسعر لكل 100 غرام بالليرة السورية الجديدة (بعد حذف صفرين، ورقم صحيح بدون فواصل — الكسور بتنجبر لفوق، مثلاً 424.3 بتصير 425). المنتجات يلي بتنباع بالحبة بينطبع عليها سعر الحبة.</p>
         <div class="form-grid">
           <label>اللوغو
             <input type="file" id="st_logoFile" accept="image/*">
@@ -569,18 +569,6 @@
           </label>
           <label>التصنيف
             <select id="st_category"><option value="">كل التصنيفات</option></select>
-          </label>
-          <label>جبر السعر لمضاعفات
-            <select id="st_roundStep">
-              <option value="50">50 (أصغر فئة)</option>
-              <option value="100">100</option>
-            </select>
-          </label>
-          <label>طريقة الجبر
-            <select id="st_roundMode">
-              <option value="nearest">لأقرب رقم (92 ← 100، 115 ← 100)</option>
-              <option value="up">دايماً لفوق (92 ← 100، 115 ← 150)</option>
-            </select>
           </label>
         </div>
 

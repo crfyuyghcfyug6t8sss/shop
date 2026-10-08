@@ -353,16 +353,81 @@ tbody tr:hover { background: #fdf8f1; }
 .badge.credit { background: #fdeaea; color: var(--red); }
 .badge.partial { background: #fff3d6; color: #a06a00; }
 
+/* ===== المبيع بالجملة ===== */
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.subtab-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 9px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--brown-dark);
+}
+.subtab-btn:hover { background: #f6ece0; }
+.subtab-btn.active { background: var(--brown); color: #fff; border-color: var(--brown); font-weight: bold; }
+
+.subview { display: none; }
+.subview.active { display: block; }
+
+.muted { color: var(--muted); font-weight: normal; }
+.neg { color: var(--red); font-weight: bold; }
+.pos { color: var(--green); }
+.warn { color: var(--red); font-weight: bold; }
+.empty-cell { text-align: center !important; color: var(--muted); }
+.small-items { font-size: 0.8rem; color: var(--muted); }
+
+#view-wholesale label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: var(--brown-dark); font-weight: 600; }
+#view-wholesale .row > label, #view-wholesale .checkbox-label { flex-direction: row; align-items: center; }
+
+.ws-item-adder {
+  display: grid;
+  grid-template-columns: 1.3fr 2fr 0.8fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+  background: #fbeedd;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+@media (max-width: 900px) { .ws-item-adder { grid-template-columns: 1fr 1fr; } }
+.ws-item-adder input, .ws-item-adder select { width: 100%; }
+
+.invoice-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 12px;
+  font-size: 1.05rem;
+  color: var(--brown-dark);
+}
+
+.stat-grid.four { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 700px) { .stat-grid.four { grid-template-columns: 1fr 1fr; } }
+
+.print-doc .doc-header { border-bottom: 2px solid var(--brown); padding-bottom: 8px; margin-bottom: 10px; }
+.print-doc .doc-header h2 { margin: 0 0 6px; }
+.doc-meta-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 4px 0; }
+.print-doc tfoot th { background: #fbeedd; }
+.group-row td { background: #f6ece0; font-weight: bold; color: var(--brown-dark); }
+.signatures { display: flex; justify-content: space-between; margin-top: 40px; }
+
 /* ===== Print ===== */
 @media print {
   body * { visibility: hidden; }
-  #printArea, #printArea * { visibility: visible; }
-  #printArea {
+  .print-active, .print-active * { visibility: visible; }
+  .print-active {
     position: absolute;
     top: 0;
     right: 0;
     left: 0;
     width: 100%;
   }
+  .print-active .no-print { display: none; }
+  .print-active th, .print-active .group-row td, .print-active .stat-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-preview-wrap { border: none; }
 }

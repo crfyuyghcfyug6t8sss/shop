@@ -21,6 +21,7 @@
     <button class="tab-btn" data-view="products">المنتجات</button>
     <button class="tab-btn" data-view="inventory">الجرد</button>
     <button class="tab-btn" data-view="sell">البيع</button>
+    <button class="tab-btn" data-view="wholesale">المبيع بالجملة</button>
     <button class="tab-btn" data-view="suppliers">الموردين</button>
     <button class="tab-btn" data-view="reports">التقارير</button>
     <button class="tab-btn" data-view="print">الطباعة</button>
@@ -67,6 +68,8 @@
             <span>منتجات بدون سعر بيع: <b id="statNoPriceCount">0</b></span>
             <span>عدد الموردين: <b id="statSupplierCount">0</b></span>
             <span>مستحقات للموردين: <b id="statSupplierDebt">0</b> $</span>
+            <span>ديون المحلات (جملة): <b id="statShopDebt">0</b> $</span>
+            <span>عمولات مستحقة للمندوبين: <b id="statRepDue">0</b> $</span>
           </div>
         </div>
       </div>
@@ -157,6 +160,9 @@
           <label>سعر البيع بالدولار <span id="p_sell_unit_label">(لكل كغ)</span> <small>(اختياري)</small>
             <input type="number" id="p_sell" min="0" step="any" placeholder="اتركه فارغاً إذا لم تحدده بعد">
           </label>
+          <label>سعر الجملة بالدولار <span id="p_wholesale_unit_label">(لكل كغ)</span> <small>(اختياري - للمبيع بالجملة)</small>
+            <input type="number" id="p_wholesale" min="0" step="any" placeholder="اتركه فارغاً إذا لم تحدده بعد">
+          </label>
           <label>المورد <small>(اختياري)</small>
             <select id="p_supplier"><option value="">— بدون —</option></select>
           </label>
@@ -199,6 +205,9 @@
         <div class="card">
           <h2>عملية بيع جديدة</h2>
           <form id="sellForm">
+            <label>🔍 بحث سريع عن المنتج
+              <input type="text" id="s_productSearch" placeholder="اكتب جزء من اسم المنتج أو تصنيفه..." autocomplete="off">
+            </label>
             <label>المنتج
               <select id="s_product" required></select>
             </label>
@@ -239,6 +248,309 @@
             </table>
           </div>
           <div class="totals-row" id="todaySalesTotals"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Wholesale (المبيع بالجملة) ==================== -->
+    <section id="view-wholesale" class="view">
+      <nav class="subtabs" id="wsTabs">
+        <button class="subtab-btn active" data-sub="ws-invoice">🧾 فاتورة جديدة</button>
+        <button class="subtab-btn" data-sub="ws-invoices">الفواتير</button>
+        <button class="subtab-btn" data-sub="ws-reps">المندوبين</button>
+        <button class="subtab-btn" data-sub="ws-shops">المحلات</button>
+        <button class="subtab-btn" data-sub="ws-prices">أسعار الجملة والطباعة</button>
+      </nav>
+
+      <!-- ---------- فاتورة جديدة ---------- -->
+      <div id="ws-invoice" class="subview active">
+        <div class="card">
+          <h2>فاتورة جملة جديدة <small class="muted" id="wi_numberLabel"></small></h2>
+          <div class="form-grid">
+            <label>المحل (الزبون)
+              <select id="wi_shop"></select>
+            </label>
+            <label>المندوب يلي باع
+              <select id="wi_rep"></select>
+            </label>
+            <label>التاريخ
+              <input type="date" id="wi_date">
+            </label>
+            <label>ملاحظة <small>(اختياري)</small>
+              <input type="text" id="wi_note" placeholder="اختياري">
+            </label>
+          </div>
+          <p class="hint" id="wi_noShopsHint"></p>
+
+          <h3>الأصناف</h3>
+          <div class="ws-item-adder">
+            <label>🔍 بحث
+              <input type="text" id="wi_search" placeholder="اسم المنتج..." autocomplete="off">
+            </label>
+            <label>المنتج
+              <select id="wi_product"></select>
+            </label>
+            <label>الكمية
+              <input type="number" id="wi_qty" min="0" step="any" placeholder="0">
+            </label>
+            <label>الوحدة
+              <select id="wi_qtyUnit"></select>
+            </label>
+            <label>السعر $ <span id="wi_priceUnitLabel"></span>
+              <input type="number" id="wi_price" min="0" step="any" placeholder="0.00">
+            </label>
+            <button type="button" class="btn primary" id="wi_addItemBtn">+ إضافة</button>
+          </div>
+          <div class="product-info" id="wi_productInfo"></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>الصنف</th><th>الكمية</th><th>السعر $</th><th>المجموع $</th><th></th></tr></thead>
+              <tbody id="wi_itemsTbody"></tbody>
+            </table>
+          </div>
+
+          <div class="invoice-summary" id="wi_summary"></div>
+
+          <div class="form-grid" style="margin-top:12px">
+            <label>طريقة الدفع
+              <select id="wi_paymentMethod">
+                <option value="credit">آجل (على الحساب)</option>
+                <option value="cash">نقدي (مدفوعة كاملة)</option>
+                <option value="partial">دفعة جزئية الآن</option>
+              </select>
+            </label>
+            <div id="wi_paidWrap" class="hidden">
+              <label>المبلغ المدفوع الآن
+                <div class="row">
+                  <input type="number" id="wi_paidAmount" min="0" step="any" placeholder="0">
+                  <select id="wi_paidCurrency">
+                    <option value="SYP">ل.س</option>
+                    <option value="USD">$</option>
+                  </select>
+                </div>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary" id="wi_saveBtn">حفظ الفاتورة</button>
+              <button type="button" class="btn" id="wi_savePrintBtn">حفظ وطباعة</button>
+              <button type="button" class="btn danger" id="wi_clearBtn">تفريغ</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- الفواتير ---------- -->
+      <div id="ws-invoices" class="subview">
+        <div class="card">
+          <h2>كل فواتير الجملة</h2>
+          <div class="row">
+            <input type="text" id="wl_search" placeholder="رقم الفاتورة، اسم المحل أو المندوب...">
+            <select id="wl_rep"></select>
+            <label>من <input type="date" id="wl_from"></label>
+            <label>إلى <input type="date" id="wl_to"></label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>رقم</th><th>التاريخ</th><th>المحل</th><th>المندوب</th><th>المجموع $</th><th>المجموع ل.س</th><th>مدفوع $</th><th>عمولة $</th><th>ربح $</th><th></th></tr></thead>
+              <tbody id="wl_tbody"></tbody>
+            </table>
+          </div>
+          <div class="totals-row" id="wl_totals"></div>
+        </div>
+
+        <div class="card hidden" id="wv_card">
+          <div class="card-header-row">
+            <h2>عرض الفاتورة</h2>
+            <div class="row">
+              <label>عملة الطباعة
+                <select id="wv_currency">
+                  <option value="SYP">ليرة سورية</option>
+                  <option value="USD">دولار</option>
+                </select>
+              </label>
+              <button class="btn primary" id="wv_printBtn">🖨️ طباعة الفاتورة</button>
+              <button class="btn" id="wv_closeBtn">إغلاق</button>
+            </div>
+          </div>
+          <div class="print-preview-wrap">
+            <div id="wv_printArea" class="print-doc"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- المندوبين ---------- -->
+      <div id="ws-reps" class="subview">
+        <div class="grid-2">
+          <div class="card">
+            <h2 id="rep_formTitle">إضافة مندوب</h2>
+            <form id="repForm" class="form-grid">
+              <label>اسم المندوب
+                <input type="text" id="rep_name" required placeholder="مثال: أبو خالد">
+              </label>
+              <label>رقم الهاتف
+                <input type="text" id="rep_phone" placeholder="09xxxxxxxx">
+              </label>
+              <label>نسبته من كل شي ببيعه (%)
+                <input type="number" id="rep_pct" min="0" max="100" step="any" placeholder="مثال: 5">
+              </label>
+              <label>ملاحظات <small>(اختياري)</small>
+                <input type="text" id="rep_notes" placeholder="اختياري">
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="rep_submitBtn">إضافة المندوب</button>
+                <button type="button" class="btn hidden" id="rep_cancelEditBtn">إلغاء التعديل</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <h2>المندوبين</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>الاسم</th><th>الهاتف</th><th>النسبة</th><th>مبيعاته $</th><th>عمولته المستحقة $</th><th></th></tr></thead>
+                <tbody id="repsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="repLedgerCard">
+          <div class="card-header-row">
+            <h2 id="repLedgerTitle">دفتر المندوب</h2>
+            <div class="row">
+              <label>من <input type="date" id="rl_from"></label>
+              <label>إلى <input type="date" id="rl_to"></label>
+              <button class="btn primary" id="rl_printBtn">🖨️ طباعة الدفتر</button>
+              <button class="btn" id="rl_closeBtn">إغلاق</button>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <h3>تسجيل دفعة عمولة للمندوب</h3>
+              <form id="repPayForm" class="row">
+                <input type="number" id="rp_amount" min="0" step="any" placeholder="المبلغ" required>
+                <select id="rp_currency"><option value="SYP">ل.س</option><option value="USD">$</option></select>
+                <input type="text" id="rp_note" placeholder="ملاحظة (اختياري)">
+                <button type="submit" class="btn primary small">تسجيل</button>
+              </form>
+            </div>
+          </div>
+          <div class="print-preview-wrap">
+            <div id="repLedgerPrint" class="print-doc"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- المحلات ---------- -->
+      <div id="ws-shops" class="subview">
+        <div class="grid-2">
+          <div class="card">
+            <h2 id="shop_formTitle">إضافة محل</h2>
+            <form id="shopForm" class="form-grid">
+              <label>اسم المحل
+                <input type="text" id="shop_name" required placeholder="مثال: سوبرماركت الأمل">
+              </label>
+              <label>اسم صاحب المحل <small>(اختياري)</small>
+                <input type="text" id="shop_owner" placeholder="اختياري">
+              </label>
+              <label>رقم الهاتف <small>(اختياري)</small>
+                <input type="text" id="shop_phone" placeholder="اختياري">
+              </label>
+              <label>العنوان / المنطقة <small>(اختياري)</small>
+                <input type="text" id="shop_address" placeholder="اختياري">
+              </label>
+              <label>المندوب المسؤول عنه <small>(اختياري)</small>
+                <select id="shop_rep"></select>
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="shop_submitBtn">إضافة المحل</button>
+                <button type="button" class="btn hidden" id="shop_cancelEditBtn">إلغاء التعديل</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-header-row">
+              <h2>المحلات</h2>
+              <input type="text" id="shopSearch" placeholder="بحث عن محل...">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>المحل</th><th>الهاتف</th><th>المندوب</th><th>مشترياته $</th><th>الباقي عليه $</th><th></th></tr></thead>
+                <tbody id="shopsTbody"></tbody>
+              </table>
+            </div>
+            <div class="totals-row" id="shopsTotals"></div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="shopLedgerCard">
+          <div class="card-header-row">
+            <h2 id="shopLedgerTitle">دفتر المحل</h2>
+            <div class="row">
+              <button class="btn primary" id="sl_printBtn">🖨️ طباعة كشف الحساب</button>
+              <button class="btn" id="sl_closeBtn">إغلاق</button>
+            </div>
+          </div>
+          <h3>تسجيل دفعة من المحل</h3>
+          <form id="shopPayForm" class="row">
+            <input type="number" id="sp_amount" min="0" step="any" placeholder="المبلغ" required>
+            <select id="sp_currency"><option value="SYP">ل.س</option><option value="USD">$</option></select>
+            <input type="text" id="sp_note" placeholder="ملاحظة (اختياري)">
+            <button type="submit" class="btn primary small">تسجيل الدفعة</button>
+          </form>
+          <div class="print-preview-wrap">
+            <div id="shopLedgerPrint" class="print-doc"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- أسعار الجملة والطباعة ---------- -->
+      <div id="ws-prices" class="subview">
+        <div class="card">
+          <div class="card-header-row">
+            <h2>أسعار الجملة</h2>
+            <input type="text" id="wp_search" placeholder="بحث عن منتج...">
+          </div>
+          <p class="hint">حدد سعر الجملة بالدولار لكل صنف (لكل كغ أو لكل حبة). هذا السعر هو يلي بيتعبى تلقائياً بالفاتورة وبيطلع بنشرة الأسعار. التعديل بينحفظ فوراً.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>الاسم</th><th>التصنيف</th><th>الوحدة</th><th>رأس المال $</th><th>سعر المفرق $</th><th>سعر الجملة $</th><th>سعر الجملة ل.س (اليوم)</th></tr></thead>
+              <tbody id="wp_tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>🖨️ طباعة نشرة أسعار للمندوبين</h2>
+          <div class="form-grid">
+            <label>عنوان النشرة
+              <input type="text" id="wpp_title" value="نشرة أسعار الجملة">
+            </label>
+            <label>التصنيف
+              <select id="wpp_category"><option value="">كل التصنيفات</option></select>
+            </label>
+            <label>العملة
+              <select id="wpp_currency">
+                <option value="SYP">ليرة سورية</option>
+                <option value="USD">دولار</option>
+              </select>
+            </label>
+            <label>اسم المندوب على النشرة <small>(اختياري)</small>
+              <select id="wpp_rep"></select>
+            </label>
+          </div>
+          <div class="checkbox-row">
+            <label class="checkbox-label"><input type="checkbox" id="wpp_showCarton" checked> سعر الكرتونة (للأصناف يلي إلها كرتونة)</label>
+            <label class="checkbox-label"><input type="checkbox" id="wpp_showRetail"> سعر المفرق المقترح</label>
+            <label class="checkbox-label"><input type="checkbox" id="wpp_onlyPriced"> بس الأصناف يلي إلها سعر جملة</label>
+          </div>
+          <p class="hint">الأصناف يلي ما إلها سعر جملة بتنطبع بخانة فاضية (خط) لتعبئتها باليد.</p>
+          <div class="form-actions">
+            <button class="btn primary" id="wpp_printBtn">طباعة النشرة</button>
+          </div>
+          <div class="print-preview-wrap">
+            <div id="wpp_printArea" class="print-doc"></div>
+          </div>
         </div>
       </div>
     </section>

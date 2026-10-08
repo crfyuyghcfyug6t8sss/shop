@@ -514,9 +514,18 @@
           <p class="hint">حدد سعر الجملة بالدولار لكل صنف (لكل كغ أو لكل حبة). هذا السعر هو يلي بيتعبى تلقائياً بالفاتورة وبيطلع بنشرة الأسعار. التعديل بينحفظ فوراً.</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>الاسم</th><th>التصنيف</th><th>الوحدة</th><th>رأس المال $</th><th>سعر المفرق $</th><th>سعر الجملة $</th><th>سعر الجملة ل.س (اليوم)</th></tr></thead>
+              <thead><tr><th>الاسم</th><th>التصنيف</th><th>الوحدة</th><th>رأس المال $</th><th>سعر المفرق $</th><th>سعر الجملة $</th><th>سعر الجملة ل.س (اليوم)</th><th></th></tr></thead>
               <tbody id="wp_tbody"></tbody>
             </table>
+          </div>
+          <div id="wp_hiddenWrap" class="hidden">
+            <h3>أصناف محذوفة من الجملة <small class="muted">(ما بتطلع بالنشرة ولا بالفواتير، بس بتضل موجودة بالمفرق والمخزون)</small></h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>الاسم</th><th>التصنيف</th><th></th></tr></thead>
+                <tbody id="wp_hiddenTbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -533,6 +542,7 @@
               <select id="wpp_currency">
                 <option value="SYP">ليرة سورية</option>
                 <option value="USD">دولار</option>
+                <option value="BOTH">ليرة ودولار معاً</option>
               </select>
             </label>
             <label>اسم المندوب على النشرة <small>(اختياري)</small>

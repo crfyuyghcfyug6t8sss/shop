@@ -524,9 +524,10 @@ function productMatches(p, q) {
 }
 
 // يعيد تعبئة قائمة المنتجات حسب نص البحث، ويختار أول نتيجة تلقائياً إذا الاختيار الحالي مش ضمن النتائج
-function populateSearchableProductSelect(selectEl, query) {
-  const matches = state.products.filter(p => productMatches(p, query));
-  populateProductSelect(selectEl, true, p => productMatches(p, query),
+function populateSearchableProductSelect(selectEl, query, baseFilter) {
+  const ok = p => (!baseFilter || baseFilter(p)) && productMatches(p, query);
+  const matches = state.products.filter(ok);
+  populateProductSelect(selectEl, true, ok,
     query && query.trim() ? `— ${matches.length} نتيجة —` : '— اختر —');
   if (query && query.trim() && matches.length && !matches.some(p => p.id === selectEl.value)) {
     selectEl.value = matches[0].id;
@@ -1285,7 +1286,7 @@ function renderInvoiceForm() {
   document.getElementById('wi_numberLabel').textContent = `— رقم ${state.meta.nextInvoiceNo || 1}`;
   document.getElementById('wi_noShopsHint').textContent = state.shops.length ? '' : 'ما في محلات مضافة بعد — روح على تبويب "المحلات" وضيف المحل أول.';
 
-  populateSearchableProductSelect(document.getElementById('wi_product'), document.getElementById('wi_search').value);
+  populateSearchableProductSelect(document.getElementById('wi_product'), document.getElementById('wi_search').value, isWholesaleProduct);
   updateInvoiceAdderForProduct(false);
   renderInvoiceDraft();
 }
@@ -1566,12 +1567,23 @@ function renderInvoiceView() {
 
 /* ----- أسعار الجملة + نشرة الأسعار ----- */
 
+// الصنف المحذوف من الجملة بيضل موجود بالمفرق والمخزون، بس ما بيطلع بالنشرة ولا بفواتير الجملة
+function isWholesaleProduct(p) { return !p.wholesaleHidden; }
+
+function setWholesaleHidden(id, hidden) {
+  const p = state.products.find(x => x.id === id);
+  if (!p) return;
+  if (hidden && !confirm(`حذف "${p.name}" من قائمة الجملة؟ (بيضل موجود بالمفرق والمخزون، وفيك ترجعه بأي وقت)`)) return;
+  p.wholesaleHidden = hidden;
+  save();
+}
+
 function renderWholesalePrices() {
   const tbody = document.getElementById('wp_tbody');
   const q = document.getElementById('wp_search').value;
   const rate = getCurrentRate();
   tbody.innerHTML = '';
-  state.products.filter(p => productMatches(p, q)).forEach(p => {
+  state.products.filter(p => isWholesaleProduct(p) && productMatches(p, q)).forEach(p => {
     const row = el(`
       <tr>
         <td>${escapeHtml(p.name)}</td>
@@ -1581,10 +1593,20 @@ function renderWholesalePrices() {
         <td>${p.sellPriceUSD != null ? fmt(p.sellPriceUSD, 2) : '—'}</td>
         <td><input type="number" class="inline-edit ws-price-input" min="0" step="any" value="${p.wholesalePriceUSD ?? ''}" placeholder="غير محدد" data-id="${p.id}"></td>
         <td class="ws-price-syp">${p.wholesalePriceUSD != null && rate ? fmt(p.wholesalePriceUSD * rate) : '—'}</td>
+        <td><button class="link-btn ws-hide-btn" data-id="${p.id}">حذف من الجملة</button></td>
       </tr>
     `);
     tbody.appendChild(row);
   });
+  tbody.querySelectorAll('.ws-hide-btn').forEach(b => b.addEventListener('click', () => setWholesaleHidden(b.dataset.id, true)));
+
+  const hiddenList = state.products.filter(p => !isWholesaleProduct(p) && productMatches(p, q));
+  document.getElementById('wp_hiddenWrap').classList.toggle('hidden', !hiddenList.length);
+  const hiddenTbody = document.getElementById('wp_hiddenTbody');
+  hiddenTbody.innerHTML = hiddenList.map(p => `
+    <tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.category || '—')}</td>
+    <td><button class="link-btn ws-unhide-btn" data-id="${p.id}">إرجاع للجملة</button></td></tr>`).join('');
+  hiddenTbody.querySelectorAll('.ws-unhide-btn').forEach(b => b.addEventListener('click', () => setWholesaleHidden(b.dataset.id, false)));
   tbody.querySelectorAll('.ws-price-input').forEach(input => {
     // حفظ فوري مع كل حرف، وتحديث خانة الليرة والمعاينة فقط (بدون إعادة رسم الجدول حتى يضل التنقل بـ Tab سلس)
     input.addEventListener('input', () => {
@@ -1600,7 +1622,7 @@ function renderWholesalePrices() {
 
   const catSel = document.getElementById('wpp_category');
   const curCat = catSel.value;
-  const cats = [...new Set(state.products.map(p => p.category).filter(Boolean))];
+  const cats = [...new Set(state.products.filter(isWholesaleProduct).map(p => p.category).filter(Boolean))];
   catSel.innerHTML = '<option value="">كل التصنيفات</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
   catSel.value = cats.includes(curCat) ? curCat : '';
   populateSimpleSelect(document.getElementById('wpp_rep'), state.reps, '— بدون —');
@@ -1616,24 +1638,29 @@ function buildPriceListPreview() {
   const rep = repById(document.getElementById('wpp_rep').value);
   const title = document.getElementById('wpp_title').value || 'نشرة أسعار الجملة';
   const rate = getCurrentRate();
-  const curLabel = currency === 'USD' ? '$' : 'ل.س';
+  // "BOTH" = كل سعر بينطبع بعمودين: ليرة ودولار
+  const currencies = currency === 'BOTH' ? ['SYP', 'USD'] : [currency];
+  const curLabel = c => c === 'USD' ? '$' : 'ل.س';
 
-  const priceText = (usd, unitLabel) => {
+  const priceText = (usd, unitLabel, cur) => {
     if (usd == null) return '<span class="fill-blank"></span>';
-    if (currency === 'USD') return fmt(usd, 2) + (unitLabel ? ' / ' + unitLabel : '');
+    if (cur === 'USD') return fmt(usd, 2) + (unitLabel ? ' / ' + unitLabel : '');
     if (!rate) return '<span class="fill-blank"></span>';
     return fmt(usd * rate) + (unitLabel ? ' / ' + unitLabel : '');
   };
+  const priceCells = (usd, unitLabel, suffix) => currencies.map(c => priceText(usd, unitLabel, c) + (suffix || ''));
+  const priceHeaders = label => currencies.map(c => `${label} (${curLabel(c)})`);
 
   const products = state.products
+    .filter(isWholesaleProduct)
     .filter(p => !category || p.category === category)
     .filter(p => !onlyPriced || p.wholesalePriceUSD != null)
     .slice()
     .sort((a, b) => (a.category || '').localeCompare(b.category || '', 'ar') || a.name.localeCompare(b.name, 'ar'));
 
-  const headers = ['#', 'الصنف', `سعر الجملة (${curLabel})`];
-  if (showCarton) headers.push(`سعر الكرتونة (${curLabel})`);
-  if (showRetail) headers.push(`سعر المفرق المقترح (${curLabel})`);
+  const headers = ['#', 'الصنف', ...priceHeaders('سعر الجملة')];
+  if (showCarton) headers.push(...priceHeaders('سعر الكرتونة'));
+  if (showRetail) headers.push(...priceHeaders('سعر المفرق المقترح'));
 
   let lastCat = null, n = 0;
   const rowsHtml = products.map(p => {
@@ -1645,20 +1672,20 @@ function buildPriceListPreview() {
     }
     n++;
     const unitLabel = p.unit === 'kg' ? 'كغ' : 'حبة';
-    const cells = [String(n), escapeHtml(p.name), priceText(p.wholesalePriceUSD, unitLabel)];
+    const cells = [String(n), escapeHtml(p.name), ...priceCells(p.wholesalePriceUSD, unitLabel)];
     if (showCarton) {
-      cells.push(p.unit === 'piece' && p.unitsPerCarton
-        ? priceText(p.wholesalePriceUSD != null ? p.wholesalePriceUSD * p.unitsPerCarton : null, '') + ` <small>(${p.unitsPerCarton} حبة)</small>`
-        : '—');
+      cells.push(...(p.unit === 'piece' && p.unitsPerCarton
+        ? priceCells(p.wholesalePriceUSD != null ? p.wholesalePriceUSD * p.unitsPerCarton : null, '', ` <small>(${p.unitsPerCarton} حبة)</small>`)
+        : currencies.map(() => '—')));
     }
-    if (showRetail) cells.push(priceText(p.sellPriceUSD, unitLabel));
+    if (showRetail) cells.push(...priceCells(p.sellPriceUSD, unitLabel));
     return html + '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
   }).join('');
 
   document.getElementById('wpp_printArea').innerHTML = `
     <div class="doc-header">
       <h2>${escapeHtml(title)}</h2>
-      <div class="doc-meta-row"><span>التاريخ: ${todayStr()}</span>${rep ? `<span>المندوب: <b>${escapeHtml(rep.name)}</b>${rep.phone ? ' — ' + escapeHtml(rep.phone) : ''}</span>` : ''}</div>
+      <div class="doc-meta-row"><span>التاريخ: ${todayStr()}${currency === 'BOTH' && rate ? ` — سعر الصرف: ${fmt(rate)} ل.س / دولار` : ''}</span>${rep ? `<span>المندوب: <b>${escapeHtml(rep.name)}</b>${rep.phone ? ' — ' + escapeHtml(rep.phone) : ''}</span>` : ''}</div>
     </div>
     <table>
       <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
@@ -1707,7 +1734,7 @@ function setupWholesale() {
   wiSearch.addEventListener('input', () => {
     const sel = document.getElementById('wi_product');
     const before = sel.value;
-    populateSearchableProductSelect(sel, wiSearch.value);
+    populateSearchableProductSelect(sel, wiSearch.value, isWholesaleProduct);
     updateInvoiceAdderForProduct(sel.value !== before);
   });
   wiSearch.addEventListener('keydown', (e) => {
